@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import {
   StyleSheet,
@@ -7,6 +8,25 @@ import {
 } from 'react-native';
 
 export default function RoleSelectionScreen() {
+  const handlePatient = async () => {
+    const patient = await AsyncStorage.getItem('currentPatient');
+
+    if (patient) {
+      router.push('/patient-dashboard');
+    } else {
+      router.push('/patient-login');
+    }
+  };
+
+  const handleHospital = async () => {
+    const hospital = await AsyncStorage.getItem('currentHospital');
+
+    if (hospital) {
+      router.push('/hospital-dashboard');
+    } else {
+      router.push('/hospital-login');
+    }
+  };
   return (
     <View style={styles.container}>
 
@@ -39,7 +59,7 @@ export default function RoleSelectionScreen() {
         {/* Patient */}
         <TouchableOpacity
           style={styles.roleCard}
-          onPress={() => router.push('/patient-login')}
+          onPress={handlePatient}
           activeOpacity={0.85}
         >
           <View style={styles.iconBox}>
@@ -62,7 +82,7 @@ export default function RoleSelectionScreen() {
         {/* Hospital */}
         <TouchableOpacity
           style={styles.roleCard}
-          onPress={() => router.push('/hospital-login')}
+          onPress={handleHospital}
           activeOpacity={0.85}
         >
           <View style={styles.iconBox}>
