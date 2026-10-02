@@ -1,15 +1,15 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const API_URL = 'https://qcare-tisd.onrender.com';
@@ -279,7 +279,7 @@ export default function HospitalForgotPasswordScreen() {
 
       Alert.alert(
         'OTP Sent',
-        'An OTP has been sent. Please check the server console during development.',
+        'An OTP has been sent. Please check your registered email ID.',
         [
           {
             text: 'Continue',
