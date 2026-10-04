@@ -80,6 +80,14 @@ export default function AdminActiveHospitals() {
   const deactivateHospital = async (
   hospital: Hospital
 ) => {
+  const confirmed = window.confirm(
+    `Are you sure you want to deactivate ${hospital.name}?`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
   try {
     const response = await fetch(
       `${API_URL}/deactivate-hospital/${hospital.id}`,
@@ -91,17 +99,15 @@ export default function AdminActiveHospitals() {
     const data = await response.json();
 
     if (!data.success) {
-      Alert.alert(
-        'Error',
+      window.alert(
         data.message ||
           'Unable to deactivate hospital.'
       );
       return;
     }
 
-    Alert.alert(
-      'Hospital Deactivated',
-      `${hospital.name} has been deactivated.`
+    window.alert(
+      `${hospital.name} has been deactivated successfully.`
     );
 
     loadHospitals();
@@ -113,8 +119,7 @@ export default function AdminActiveHospitals() {
       error
     );
 
-    Alert.alert(
-      'Connection Error',
+    window.alert(
       'Unable to connect to QCare server.'
     );
   }
