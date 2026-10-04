@@ -17,29 +17,47 @@ export default function AdminLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleLogin = () => {
-    if (!email || !password) {
-      Alert.alert(
-        'Missing Details',
-        'Please enter email and password.'
-      );
-      return;
-    }
+  const handleLogin = async () => {
+  if (!email || !password) {
+    Alert.alert(
+      'Missing Details',
+      'Please enter email and password.'
+    );
+    return;
+  }
 
-    // Temporary login check
-    if (
-      email.trim() === 'admin@qcare.com' &&
-      password === 'JaiHanuman@21'
-    ) {
+  try {
+    const response = await fetch(
+      'https://qcare-tisd.onrender.com/admin-login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: 'admin',
+          password: password,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.success) {
       router.replace('/admin-dashboard');
     } else {
-      Alert.alert(
-        'Login Failed',
-        'Invalid admin email or password.'
+      window.alert(
+        data.message || 'Invalid admin password.'
       );
     }
-  };
+  } catch (error) {
+    console.log('ADMIN LOGIN ERROR:', error);
 
+   window.alert(
+  'Connection Error\n\nUnable to connect to QCare server.'
+);
+  }
+};
   return (
     <KeyboardAvoidingView
       style={styles.container}
