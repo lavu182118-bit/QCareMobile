@@ -1,13 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const API_URL = 'https://qcare-tisd.onrender.com';
@@ -93,72 +93,57 @@ export default function AdminHospitalDetails() {
     loadHospital();
   }, [hospitalId]);
 
-  const deactivateHospital = () => {
-    if (!hospital) return;
+  const deactivateHospital = async () => {
+  if (!hospital) return;
 
-    Alert.alert(
-      'Deactivate Hospital',
-      `Are you sure you want to deactivate ${hospital.name}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
+  const confirmed = window.confirm(
+    `Are you sure you want to deactivate ${hospital.name}?`
+  );
 
-          onPress: async () => {
-            try {
-              setActionLoading(true);
+  if (!confirmed) {
+    return;
+  }
 
-              const response =
-                await fetch(
-                  `${API_URL}/deactivate-hospital/${hospital.id}`,
-                  {
-                    method: 'PUT',
-                  }
-                );
+  try {
+    setActionLoading(true);
 
-              const data =
-                await response.json();
-
-              if (!data.success) {
-                Alert.alert(
-                  'Error',
-                  data.message ||
-                    'Unable to deactivate hospital.'
-                );
-                return;
-              }
-
-              Alert.alert(
-                'Success',
-                'Hospital deactivated successfully.'
-              );
-
-              await loadHospital();
-
-            } catch (error) {
-              console.log(
-                'DEACTIVATE HOSPITAL ERROR:',
-                error
-              );
-
-              Alert.alert(
-                'Connection Error',
-                'Unable to connect to QCare server.'
-              );
-
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
+    const response = await fetch(
+      `${API_URL}/deactivate-hospital/${hospital.id}`,
+      {
+        method: 'PUT',
+      }
     );
-  };
 
+    const data = await response.json();
+
+    if (!data.success) {
+      window.alert(
+        data.message ||
+          'Unable to deactivate hospital.'
+      );
+      return;
+    }
+
+    window.alert(
+      `${hospital.name} has been deactivated successfully.`
+    );
+
+    await loadHospital();
+
+  } catch (error) {
+    console.log(
+      'DEACTIVATE HOSPITAL ERROR:',
+      error
+    );
+
+    window.alert(
+      'Unable to connect to QCare server.'
+    );
+
+  } finally {
+    setActionLoading(false);
+  }
+};
   const approveHospital = () => {
     if (!hospital) return;
 
