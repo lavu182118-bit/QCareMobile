@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const API_URL = 'https://qcare-tisd.onrender.com';
@@ -21,7 +21,7 @@ type RequestItem = {
   phone: string;
   address: string;
   status: string;
-  requested_at: string;
+  created_at: string;
 };
 
 export default function AdminReactivationRequests() {
@@ -73,59 +73,55 @@ export default function AdminReactivationRequests() {
     loadRequests();
   };
 
-  const approveRequest = (item: RequestItem) => {
-    Alert.alert(
-      'Approve Reactivation',
-      `Reactivate ${item.name}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Approve',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${API_URL}/admin/approve-reactivation/${item.id}`,
-                {
-                  method: 'PUT',
-                }
-              );
+  const approveRequest = async (
+  item: RequestItem
+) => {
 
-              const data = await response.json();
+  const confirmed = window.confirm(
+    `Are you sure you want to reactivate ${item.name}?`
+  );
 
-              if (!data.success) {
-                Alert.alert(
-                  'Error',
-                  data.message ||
-                    'Unable to approve request.'
-                );
-                return;
-              }
+  if (!confirmed) {
+    return;
+  }
 
-              Alert.alert(
-                'Approved',
-                `${item.name} has been reactivated.`
-              );
+  try {
 
-              loadRequests();
-            } catch (error) {
-              console.log(
-                'APPROVE REACTIVATION ERROR:',
-                error
-              );
-
-              Alert.alert(
-                'Connection Error',
-                'Unable to connect to QCare server.'
-              );
-            }
-          },
-        },
-      ]
+    const response = await fetch(
+      `${API_URL}/admin/approve-reactivation/${item.id}`,
+      {
+        method: 'PUT',
+      }
     );
-  };
+
+    const data = await response.json();
+
+    if (!data.success) {
+      window.alert(
+        data.message ||
+        'Unable to approve reactivation request.'
+      );
+      return;
+    }
+
+    window.alert(
+      `${item.name} has been reactivated successfully.`
+    );
+
+    await loadRequests();
+
+  } catch (error) {
+
+    console.log(
+      'APPROVE REACTIVATION ERROR:',
+      error
+    );
+
+    window.alert(
+      'Unable to connect to QCare server.'
+    );
+  }
+};
 
   return (
     <View style={styles.container}>
@@ -343,9 +339,9 @@ export default function AdminReactivationRequests() {
                   </Text>
 
                   <Text style={styles.requestInfoValue}>
-                    {item.requested_at
+                    {item.created_at
                       ? new Date(
-                          item.requested_at
+                          item.created_at
                         ).toLocaleDateString()
                       : 'Recently requested'}
                   </Text>
