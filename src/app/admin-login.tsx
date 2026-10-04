@@ -29,7 +29,7 @@ export default function AdminLogin() {
     // Temporary login check
     if (
       email.trim() === 'admin@qcare.com' &&
-      password === 'admin123'
+      password === 'JaiHanuman@21'
     ) {
       router.replace('/admin-dashboard');
     } else {
