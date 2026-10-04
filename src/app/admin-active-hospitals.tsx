@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const API_URL = 'https://qcare-tisd.onrender.com';
@@ -77,65 +77,48 @@ export default function AdminActiveHospitals() {
     loadHospitals();
   };
 
-  const deactivateHospital = (
-    hospital: Hospital
-  ) => {
-    Alert.alert(
-      'Deactivate Hospital',
-      `Deactivate ${hospital.name}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${API_URL}/deactivate-hospital/${hospital.id}`,
-                {
-                  method: 'PUT',
-                }
-              );
-
-              const data =
-                await response.json();
-
-              if (!data.success) {
-                Alert.alert(
-                  'Error',
-                  data.message ||
-                    'Unable to deactivate hospital.'
-                );
-                return;
-              }
-
-              Alert.alert(
-                'Hospital Deactivated',
-                `${hospital.name} has been deactivated.`
-              );
-
-              loadHospitals();
-            } catch (error) {
-              console.log(
-                'DEACTIVATE HOSPITAL ERROR:',
-                error
-              );
-
-              Alert.alert(
-                'Connection Error',
-                'Unable to connect to QCare server.'
-              );
-            }
-          },
-        },
-      ]
+  const deactivateHospital = async (
+  hospital: Hospital
+) => {
+  try {
+    const response = await fetch(
+      `${API_URL}/deactivate-hospital/${hospital.id}`,
+      {
+        method: 'PUT',
+      }
     );
-  };
 
+    const data = await response.json();
+
+    if (!data.success) {
+      Alert.alert(
+        'Error',
+        data.message ||
+          'Unable to deactivate hospital.'
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Hospital Deactivated',
+      `${hospital.name} has been deactivated.`
+    );
+
+    loadHospitals();
+
+  } catch (error) {
+
+    console.log(
+      'DEACTIVATE HOSPITAL ERROR:',
+      error
+    );
+
+    Alert.alert(
+      'Connection Error',
+      'Unable to connect to QCare server.'
+    );
+  }
+};
   return (
     <View style={styles.container}>
 
