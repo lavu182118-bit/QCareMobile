@@ -2,13 +2,12 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
 const API_URL = 'https://qcare-tisd.onrender.com';
@@ -59,24 +58,18 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => {
-            router.replace('/admin-login');
-          },
-        },
-      ]
-    );
-  };
+  const confirmed = window.confirm(
+    'Are you sure you want to logout?'
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  window.alert('You have been logged out.');
+
+  router.replace('/admin-login');
+};
 
   const totalHospitals = hospitals.length;
 
