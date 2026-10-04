@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const API_URL = 'https://qcare-tisd.onrender.com';
@@ -79,120 +79,101 @@ export default function AdminPendingHospitals() {
   };
 
   const approveHospital = async (
-    hospital: Hospital
-  ) => {
-    Alert.alert(
-      'Approve Hospital',
-      `Approve ${hospital.name}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Approve',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${API_URL}/admin/approve-hospital/${hospital.id}`,
-                {
-                  method: 'PUT',
-                }
-              );
+  hospital: Hospital
+) => {
+  const confirmed = window.confirm(
+    `Approve ${hospital.name}?`
+  );
 
-              const data =
-                await response.json();
+  if (!confirmed) {
+    return;
+  }
 
-              if (!data.success) {
-                Alert.alert(
-                  'Error',
-                  data.message ||
-                    'Unable to approve hospital.'
-                );
-                return;
-              }
-
-              Alert.alert(
-                'Approved',
-                `${hospital.name} has been approved.`
-              );
-
-              loadHospitals();
-            } catch (error) {
-              console.log(
-                'APPROVE HOSPITAL ERROR:',
-                error
-              );
-
-              Alert.alert(
-                'Connection Error',
-                'Unable to connect to QCare server.'
-              );
-            }
-          },
-        },
-      ]
+  try {
+    const response = await fetch(
+      `${API_URL}/admin/approve-hospital/${hospital.id}`,
+      {
+        method: 'PUT',
+      }
     );
-  };
 
-  const rejectHospital = async (
-    hospital: Hospital
-  ) => {
-    Alert.alert(
-      'Reject Hospital',
-      `Reject ${hospital.name}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${API_URL}/admin/reject-hospital/${hospital.id}`,
-                {
-                  method: 'PUT',
-                }
-              );
+    const data = await response.json();
 
-              const data =
-                await response.json();
+    if (!data.success) {
+      window.alert(
+        data.message ||
+          'Unable to approve hospital.'
+      );
+      return;
+    }
 
-              if (!data.success) {
-                Alert.alert(
-                  'Error',
-                  data.message ||
-                    'Unable to reject hospital.'
-                );
-                return;
-              }
-
-              Alert.alert(
-                'Rejected',
-                `${hospital.name} has been rejected.`
-              );
-
-              loadHospitals();
-            } catch (error) {
-              console.log(
-                'REJECT HOSPITAL ERROR:',
-                error
-              );
-
-              Alert.alert(
-                'Connection Error',
-                'Unable to connect to QCare server.'
-              );
-            }
-          },
-        },
-      ]
+    window.alert(
+      `${hospital.name} has been approved.`
     );
-  };
 
+    loadHospitals();
+
+  } catch (error) {
+
+    console.log(
+      'APPROVE HOSPITAL ERROR:',
+      error
+    );
+
+    window.alert(
+      'Unable to connect to QCare server.'
+    );
+  }
+};
+
+
+const rejectHospital = async (
+  hospital: Hospital
+) => {
+  const confirmed = window.confirm(
+    `Reject ${hospital.name}?`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `${API_URL}/admin/reject-hospital/${hospital.id}`,
+      {
+        method: 'PUT',
+      }
+    );
+
+    const data = await response.json();
+
+    if (!data.success) {
+      window.alert(
+        data.message ||
+          'Unable to reject hospital.'
+      );
+      return;
+    }
+
+    window.alert(
+      `${hospital.name} has been rejected.`
+    );
+
+    loadHospitals();
+
+  } catch (error) {
+
+    console.log(
+      'REJECT HOSPITAL ERROR:',
+      error
+    );
+
+    window.alert(
+      'Unable to connect to QCare server.'
+    );
+  }
+};
   return (
     <View style={styles.container}>
 
