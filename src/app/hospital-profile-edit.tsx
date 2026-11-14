@@ -3,14 +3,14 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 type HospitalData = {
@@ -455,7 +455,8 @@ export default function HospitalProfileEditScreen() {
       // -------------------------------
 
       const response = await fetch(
-        `https://qcare-tisd.onrender.com/hospital-profile/${hospital.id}`,
+        `https:// 'https://qcare-backend-o8za.onrender.com';
+/hospital-profile/${hospital.id}`,
         {
           method: 'PUT',
 

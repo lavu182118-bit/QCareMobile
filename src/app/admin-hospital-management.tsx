@@ -1,22 +1,22 @@
 import { useCallback, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import {
-    router,
-    useFocusEffect,
+  router,
+  useFocusEffect,
 } from 'expo-router';
 
-const API_URL = 'https://qcare-tisd.onrender.com';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 type Hospital = {
   id: number;

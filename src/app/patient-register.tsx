@@ -13,7 +13,7 @@ import {
 import { router } from 'expo-router';
 import { useState } from 'react';
 
-const API_URL = 'http://10.248.142.112:3000';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 export default function PatientRegisterScreen() {
   const [name, setName] = useState('');

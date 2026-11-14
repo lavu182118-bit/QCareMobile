@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 
-const SERVER_URL = 'https://qcare-tisd.onrender.com';
+const SERVER_URL = 'https://qcare-backend-o8za.onrender.com';
 
 const DOCTORS = [
   'General Physician',

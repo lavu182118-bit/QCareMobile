@@ -12,7 +12,8 @@ import {
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-const API_URL = 'https://qcare-tisd.onrender.com';
+const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
+';
 
 type Hospital = {
   id: number;

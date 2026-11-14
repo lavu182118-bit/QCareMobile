@@ -3,14 +3,14 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 type HospitalData = {
@@ -78,7 +78,8 @@ export default function HospitalDashboardScreen() {
 
         const notificationResponse =
           await fetch(
-            `https://qcare-tisd.onrender.com/hospital-notifications/${hospitalData.id}`
+            `https:// 'https://qcare-backend-o8za.onrender.com';
+/hospital-notifications/${hospitalData.id}`
           );
 
         const notificationData =
@@ -115,7 +116,8 @@ export default function HospitalDashboardScreen() {
       try {
 
         const response = await fetch(
-  `https://qcare-tisd.onrender.com/hospital-stats/${hospitalData.id}`
+  `https:// 'https://qcare-backend-o8za.onrender.com';
+/hospital-stats/${hospitalData.id}`
 );
 
         const data =
@@ -129,7 +131,8 @@ export default function HospitalDashboardScreen() {
 
         const appointmentResponse =
   await fetch(
-    `https://qcare-tisd.onrender.com/hospital-appointments-count/${hospitalData.id}`
+    `https:// 'https://qcare-backend-o8za.onrender.com';
+/hospital-appointments-count/${hospitalData.id}`
   );
 
         const appointmentData =
@@ -238,7 +241,8 @@ export default function HospitalDashboardScreen() {
       try {
 
         const response = await fetch(
-  `https://qcare-tisd.onrender.com/hospital-request-reactivation/${hospital.id}`,
+  `https:// 'https://qcare-backend-o8za.onrender.com';
+/hospital-request-reactivation/${hospital.id}`,
   {
     method: 'PUT',
   }

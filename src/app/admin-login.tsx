@@ -28,7 +28,7 @@ export default function AdminLogin() {
 
   try {
     const response = await fetch(
-      'https://qcare-tisd.onrender.com/admin-login',
+      'https://qcare-backend-o8za.onrender.com/admin-login',
       {
         method: 'POST',
         headers: {
