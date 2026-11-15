@@ -1,19 +1,18 @@
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 type Hospital = {
   id: number;
@@ -29,11 +28,18 @@ type DoctorAvailability = {
 export default function BookingScreen() {
   const { hospitalId } = useLocalSearchParams();
 
-  const [hospitals, setHospitals] =
-    useState<Hospital[]>([]);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [selectedHospital, setSelectedHospital] = useState<number | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
-  const [selectedHospital, setSelectedHospital] =
-    useState<number | null>(null);
+  const [doctorAvailability, setDoctorAvailability] =
+    useState<DoctorAvailability[]>([]);
+
+  const [patientName, setPatientName] = useState('');
+  const [patientPhone, setPatientPhone] = useState('');
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     if (hospitalId) {
@@ -44,79 +50,66 @@ export default function BookingScreen() {
     }
   }, [hospitalId]);
 
-  const [selectedDoctor, setSelectedDoctor] =
-    useState('');
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [doctorAvailability, setDoctorAvailability] =
-    useState<DoctorAvailability[]>([]);
-
-  const [patientName, setPatientName] =
-    useState('');
-
-  const [patientPhone, setPatientPhone] =
-    useState('');
-
-  const [searchText, setSearchText] =
-    useState('');
-
   const loadHospitals = async () => {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const response = await fetch(
-        `${API_URL}/hospitals`
-      );
+    const controller = new AbortController();
 
-      if (!response.ok) {
-        throw new Error(
-          'Unable to fetch hospitals.'
-        );
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 15000);
+
+    const response = await fetch(
+      `${API_URL}/hospitals`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
       }
+    );
 
-      const data = await response.json();
+    clearTimeout(timeout);
 
-      if (data.success && data.hospitals) {
-        setHospitals(data.hospitals);
-      } else {
-        setHospitals([]);
-      }
-    } catch (error) {
-      Alert.alert(
-        'Connection Error',
-        'Unable to load hospitals from QCare server.'
-      );
-    } finally {
-      setLoading(false);
+    const data = await response.json();
+
+    console.log('HOSPITAL API STATUS:', response.status);
+    console.log('HOSPITAL API DATA:', data);
+
+    if (response.ok && data.success && Array.isArray(data.hospitals)) {
+      setHospitals(data.hospitals);
+    } else {
+      setHospitals([]);
+      Alert.alert('Error', 'Hospital data format is incorrect.');
     }
-  };
+  } catch (error) {
+    console.log('HOSPITAL LOAD ERROR:', error);
 
+    setHospitals([]);
+
+    Alert.alert(
+      'Connection Error',
+      'Unable to load hospitals. Please try again.'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   const loadPatient = async () => {
     try {
       const storedPatient =
-        await AsyncStorage.getItem(
-          'currentPatient'
-        );
+        await AsyncStorage.getItem('currentPatient');
 
       if (storedPatient) {
-        const patient =
-          JSON.parse(storedPatient);
+        const patient = JSON.parse(storedPatient);
 
-        setPatientName(
-          patient.name || ''
-        );
-
-        setPatientPhone(
-          patient.phone || ''
-        );
+        setPatientName(patient.name || '');
+        setPatientPhone(patient.phone || '');
       }
     } catch (error) {
-      console.log(
-        'PATIENT LOAD ERROR:',
-        error
-      );
+      console.log('PATIENT LOAD ERROR:', error);
     }
   };
 
@@ -128,37 +121,27 @@ export default function BookingScreen() {
         `${API_URL}/doctor-availability/${hospitalIdValue}`
       );
 
-      const data =
-        await response.json();
+      if (!response.ok) {
+        throw new Error('Unable to load doctor availability.');
+      }
 
-      if (
-        data.success &&
-        data.doctors
-      ) {
-        setDoctorAvailability(
-          data.doctors
-        );
+      const data = await response.json();
+
+      if (data.success && data.doctors) {
+        setDoctorAvailability(data.doctors);
       } else {
         setDoctorAvailability([]);
       }
     } catch (error) {
-      console.log(
-        'DOCTOR AVAILABILITY LOAD ERROR:',
-        error
-      );
-
+      console.log('DOCTOR AVAILABILITY LOAD ERROR:', error);
       setDoctorAvailability([]);
     }
   };
 
-  const isDoctorAvailable = (
-    doctorName: string
-  ) => {
-    const doctor =
-      doctorAvailability.find(
-        (item) =>
-          item.doctor === doctorName
-      );
+  const isDoctorAvailable = (doctorName: string) => {
+    const doctor = doctorAvailability.find(
+      (item) => item.doctor === doctorName
+    );
 
     if (!doctor) {
       return true;
@@ -167,14 +150,10 @@ export default function BookingScreen() {
     return doctor.status === 'Available';
   };
 
-  const getDoctorStatus = (
-    doctorName: string
-  ) => {
-    const doctor =
-      doctorAvailability.find(
-        (item) =>
-          item.doctor === doctorName
-      );
+  const getDoctorStatus = (doctorName: string) => {
+    const doctor = doctorAvailability.find(
+      (item) => item.doctor === doctorName
+    );
 
     if (!doctor) {
       return 'Available';
@@ -183,14 +162,10 @@ export default function BookingScreen() {
     return doctor.status;
   };
 
-  const getDoctorArrivalTime = (
-    doctorName: string
-  ) => {
-    const doctor =
-      doctorAvailability.find(
-        (item) =>
-          item.doctor === doctorName
-      );
+  const getDoctorArrivalTime = (doctorName: string) => {
+    const doctor = doctorAvailability.find(
+      (item) => item.doctor === doctorName
+    );
 
     if (
       !doctor ||
@@ -204,10 +179,9 @@ export default function BookingScreen() {
   };
 
   const handleBookAppointment = async () => {
-    if (
-      !selectedHospital ||
-      !selectedDoctor
-    ) {
+    if (bookingLoading) return;
+
+    if (!selectedHospital || !selectedDoctor) {
       Alert.alert(
         'Required',
         'Please select a hospital and doctor.'
@@ -215,11 +189,7 @@ export default function BookingScreen() {
       return;
     }
 
-    if (
-      !isDoctorAvailable(
-        selectedDoctor
-      )
-    ) {
+    if (!isDoctorAvailable(selectedDoctor)) {
       Alert.alert(
         'Doctor Unavailable',
         `${selectedDoctor} is currently unavailable. Please choose another doctor.`
@@ -227,10 +197,7 @@ export default function BookingScreen() {
       return;
     }
 
-    if (
-      !patientName ||
-      !patientPhone
-    ) {
+    if (!patientName || !patientPhone) {
       Alert.alert(
         'Patient Details Missing',
         'Please login again before booking.'
@@ -238,11 +205,11 @@ export default function BookingScreen() {
       return;
     }
 
+    setBookingLoading(true);
+
     try {
       const storedPatient =
-        await AsyncStorage.getItem(
-          'currentPatient'
-        );
+        await AsyncStorage.getItem('currentPatient');
 
       if (!storedPatient) {
         Alert.alert(
@@ -252,123 +219,129 @@ export default function BookingScreen() {
         return;
       }
 
-      const patient =
-        JSON.parse(storedPatient);
+      const patient = JSON.parse(storedPatient);
 
-      if (selectedHospital) {
-        const availabilityResponse =
-          await fetch(
-            `${API_URL}/doctor-availability/${selectedHospital}`
+      // Check latest doctor availability
+      const availabilityResponse = await fetch(
+        `${API_URL}/doctor-availability/${selectedHospital}`
+      );
+
+      if (!availabilityResponse.ok) {
+        throw new Error('Unable to check doctor availability.');
+      }
+
+      const availabilityData =
+        await availabilityResponse.json();
+
+      if (availabilityData.success) {
+        const latestDoctor =
+          availabilityData.doctors?.find(
+            (item: DoctorAvailability) =>
+              item.doctor === selectedDoctor
           );
 
-        const availabilityData =
-          await availabilityResponse.json();
-
         if (
-          availabilityData.success
+          latestDoctor &&
+          latestDoctor.status !== 'Available'
         ) {
-          const latestDoctor =
-            availabilityData.doctors.find(
-              (
-                item: DoctorAvailability
-              ) =>
-                item.doctor ===
-                selectedDoctor
-            );
+          Alert.alert(
+            'Doctor Unavailable',
+            `${selectedDoctor} is currently unavailable. Please choose another doctor.`
+          );
 
-          if (
-            latestDoctor &&
-            latestDoctor.status !==
-              'Available'
-          ) {
-            Alert.alert(
-              'Doctor Unavailable',
-              `${selectedDoctor} is currently unavailable. Please choose another doctor.`
-            );
-
-            setSelectedDoctor('');
-            return;
-          }
+          setSelectedDoctor('');
+          return;
         }
       }
 
+      // Create live queue token
       const response = await fetch(
         `${API_URL}/live-queue`,
         {
           method: 'POST',
           headers: {
-            'Content-Type':
-              'application/json',
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            hospitalId:
-              selectedHospital,
-            patientId:
-              patient.id,
-            patient:
-              patientName,
-            phone:
-              patientPhone,
-            doctor:
-              selectedDoctor,
+            hospitalId: selectedHospital,
+            patientId: patient.id,
+            patient: patientName,
+            phone: patientPhone,
+            doctor: selectedDoctor,
           }),
         }
       );
 
-      const data =
-        await response.json();
+      const responseText = await response.text();
 
-      if (!data.success) {
+      let data: any = {};
+
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok || !data.success) {
         Alert.alert(
           'Booking Failed',
           data.message ||
+            responseText ||
             'Unable to book appointment.'
         );
         return;
       }
 
+      // Save token
       await AsyncStorage.setItem(
         'currentToken',
-        data.token
+        String(data.token)
       );
 
-      console.log(
-        'SAVED TOKEN:',
-        data.token
+      console.log('SAVED TOKEN:', data.token);
+
+      // Save appointment history
+      const appointmentResponse = await fetch(
+        `${API_URL}/appointments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            patient_id: patient.id,
+            hospital_id: selectedHospital,
+            doctor: selectedDoctor,
+            token: data.token,
+          }),
+        }
       );
 
-      const appointmentResponse =
-        await fetch(
-          `${API_URL}/appointments`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type':
-                'application/json',
-            },
-            body: JSON.stringify({
-              patient_id:
-                patient.id,
-              hospital_id:
-                selectedHospital,
-              doctor:
-                selectedDoctor,
-              token:
-                data.token,
-            }),
-          }
-        );
+      const appointmentText =
+        await appointmentResponse.text();
 
-      const appointmentData =
-        await appointmentResponse.json();
+      let appointmentData: any = {};
+
+      try {
+        appointmentData = JSON.parse(appointmentText);
+      } catch {
+        appointmentData = {};
+      }
 
       if (
+        !appointmentResponse.ok ||
         !appointmentData.success
       ) {
         console.log(
           'APPOINTMENT SAVE ERROR:',
-          appointmentData.message
+          appointmentText
         );
+
+        Alert.alert(
+          'Booking Partially Completed',
+          `Token ${data.token} was created, but appointment history could not be saved.`
+        );
+        return;
       }
 
       Alert.alert(
@@ -378,22 +351,19 @@ export default function BookingScreen() {
           {
             text: 'OK',
             onPress: () =>
-              router.replace(
-                '/patient-dashboard'
-              ),
+              router.replace('/patient-dashboard'),
           },
         ]
       );
     } catch (error) {
-      console.log(
-        'BOOKING ERROR:',
-        error
-      );
+      console.log('BOOKING ERROR:', error);
 
       Alert.alert(
         'Connection Error',
         'Unable to connect to QCare server.'
       );
+    } finally {
+      setBookingLoading(false);
     }
   };
 
@@ -403,91 +373,60 @@ export default function BookingScreen() {
   }, []);
 
   // SEARCH FILTER
-
-  const filteredHospitals =
-    hospitals.filter(
-      (hospital) =>
-        hospital.name
-          .toLowerCase()
-          .includes(
-            searchText
-              .trim()
-              .toLowerCase()
-          )
-    );
+  const filteredHospitals = hospitals.filter(
+    (hospital) =>
+      hospital.name
+        .toLowerCase()
+        .includes(searchText.trim().toLowerCase())
+  );
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={
-        styles.contentContainer
-      }
-      showsVerticalScrollIndicator={
-        false
-      }
+      contentContainerStyle={styles.contentContainer}
+      showsVerticalScrollIndicator={false}
     >
-
       {/* HEADER */}
 
       <View style={styles.headerRow}>
-
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.8}
         >
-          <Text style={styles.backIcon}>
-            ‹
-          </Text>
+          <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
 
         <View style={styles.headerText}>
-          <Text style={styles.brand}>
-            QCARE
-          </Text>
-
-          <Text style={styles.title}>
-            Book Appointment
-          </Text>
+          <Text style={styles.brand}>QCARE</Text>
+          <Text style={styles.title}>Book Appointment</Text>
         </View>
 
         <View style={styles.headerIcon}>
-          <Text style={styles.headerEmoji}>
-            📅
-          </Text>
+          <Text style={styles.headerEmoji}>📅</Text>
         </View>
-
       </View>
 
       <Text style={styles.subtitle}>
-        Choose a hospital and doctor to
-        join the queue.
+        Choose a hospital and doctor to join the queue.
       </Text>
 
       {/* HOSPITAL SECTION */}
 
       <View style={styles.sectionHeader}>
-
         <View>
-          <Text style={styles.sectionTitle}>
-            Select Hospital
-          </Text>
-
+          <Text style={styles.sectionTitle}>Select Hospital</Text>
           <Text style={styles.sectionHint}>
             Search and choose an active hospital
           </Text>
         </View>
-
       </View>
 
       {/* SEARCH BOX */}
 
       <View style={styles.searchBox}>
-
         <View style={styles.searchIconBox}>
-          <Text style={styles.searchIcon}>
-            🔍
-          </Text>
+          <Text style={styles.searchIcon}>🔍</Text>
         </View>
 
         <TextInput
@@ -502,23 +441,16 @@ export default function BookingScreen() {
 
         {searchText.length > 0 && (
           <TouchableOpacity
-            onPress={() =>
-              setSearchText('')
-            }
+            onPress={() => setSearchText('')}
             style={styles.clearButton}
           >
-            <Text style={styles.clearText}>
-              ×
-            </Text>
+            <Text style={styles.clearText}>×</Text>
           </TouchableOpacity>
         )}
-
       </View>
 
       {loading ? (
-
         <View style={styles.statusCard}>
-
           <View style={styles.statusIcon}>
             <Text>🏥</Text>
           </View>
@@ -528,16 +460,11 @@ export default function BookingScreen() {
           </Text>
 
           <Text style={styles.infoText}>
-            Please wait while QCare loads
-            available hospitals.
+            Please wait while QCare loads available hospitals.
           </Text>
-
         </View>
-
       ) : filteredHospitals.length === 0 ? (
-
         <View style={styles.statusCard}>
-
           <View style={styles.statusIcon}>
             <Text>🔎</Text>
           </View>
@@ -547,130 +474,88 @@ export default function BookingScreen() {
           </Text>
 
           <Text style={styles.infoText}>
-            Try searching with a different
-            hospital name.
+            Try searching with a different hospital name.
           </Text>
-
         </View>
-
       ) : (
-
         <View>
-          {filteredHospitals.map(
-            (hospital) => (
-              <TouchableOpacity
-                key={hospital.id}
+          {filteredHospitals.map((hospital) => (
+            <TouchableOpacity
+              key={hospital.id}
+              style={[
+                styles.optionCard,
+                selectedHospital === hospital.id &&
+                  styles.optionCardSelected,
+              ]}
+              onPress={() =>
+                router.push({
+                  pathname: '/hospital-details',
+                  params: {
+                    hospitalId: String(hospital.id),
+                  },
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <View
                 style={[
-                  styles.optionCard,
-                  selectedHospital ===
-                    hospital.id &&
-                    styles.optionCardSelected,
+                  styles.optionIcon,
+                  selectedHospital === hospital.id &&
+                    styles.optionIconSelected,
                 ]}
-                onPress={() =>
-                  router.push({
-                    pathname:
-                      '/hospital-details',
-                    params: {
-                      hospitalId:
-                        String(
-                          hospital.id
-                        ),
-                    },
-                  })
-                }
-                activeOpacity={0.8}
               >
-                <View
+                <Text style={styles.optionIconText}>🏥</Text>
+              </View>
+
+              <View style={styles.optionContent}>
+                <Text
                   style={[
-                    styles.optionIcon,
-                    selectedHospital ===
-                      hospital.id &&
-                      styles.optionIconSelected,
+                    styles.optionTitle,
+                    selectedHospital === hospital.id &&
+                      styles.optionTitleSelected,
                   ]}
                 >
-                  <Text
-                    style={
-                      styles.optionIconText
-                    }
-                  >
-                    🏥
-                  </Text>
-                </View>
+                  {hospital.name}
+                </Text>
+              </View>
 
-                <View
-                  style={
-                    styles.optionContent
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.optionTitle,
-                      selectedHospital ===
-                        hospital.id &&
-                        styles.optionTitleSelected,
-                    ]}
-                  >
-                    {hospital.name}
-                  </Text>
-
-                  
-                </View>
-
-                <View
-                  style={[
-                    styles.radio,
-                    selectedHospital ===
-                      hospital.id &&
-                      styles.radioSelected,
-                  ]}
-                >
-                  {selectedHospital ===
-                    hospital.id && (
-                    <View
-                      style={
-                        styles.radioInner
-                      }
-                    />
-                  )}
-                </View>
-              </TouchableOpacity>
-            )
-          )}
+              <View
+                style={[
+                  styles.radio,
+                  selectedHospital === hospital.id &&
+                    styles.radioSelected,
+                ]}
+              >
+                {selectedHospital === hospital.id && (
+                  <View style={styles.radioInner} />
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
-
       )}
+
       {/* DOCTOR SECTION */}
 
       <View style={styles.sectionHeader}>
-
         <View>
-          <Text style={styles.sectionTitle}>
-            Select Doctor
-          </Text>
-
+          <Text style={styles.sectionTitle}>Select Doctor</Text>
           <Text style={styles.sectionHint}>
             Choose your preferred specialist
           </Text>
         </View>
-
       </View>
-
 
       {/* GENERAL PHYSICIAN */}
 
       <TouchableOpacity
         style={[
           styles.doctorCard,
-          selectedDoctor ===
-            'General Physician' &&
+          selectedDoctor === 'General Physician' &&
             styles.doctorCardSelected,
         ]}
         onPress={() => {
-          if (
-            !isDoctorAvailable(
-              'General Physician'
-            )
-          ) {
+          if (!isDoctorAvailable('General Physician')) {
             Alert.alert(
               'Doctor Unavailable',
               'General Physician is currently unavailable.'
@@ -678,26 +563,19 @@ export default function BookingScreen() {
             return;
           }
 
-          setSelectedDoctor(
-            'General Physician'
-          );
+          setSelectedDoctor('General Physician');
         }}
         activeOpacity={0.8}
       >
-
         <View style={styles.doctorIcon}>
-          <Text style={styles.doctorIconText}>
-            🩺
-          </Text>
+          <Text style={styles.doctorIconText}>🩺</Text>
         </View>
 
         <View style={styles.doctorInfo}>
-
           <Text
             style={[
               styles.doctorText,
-              selectedDoctor ===
-                'General Physician' &&
+              selectedDoctor === 'General Physician' &&
                 styles.doctorTextSelected,
             ]}
           >
@@ -705,15 +583,12 @@ export default function BookingScreen() {
           </Text>
 
           <View style={styles.doctorStatusRow}>
-
             <View
               style={[
                 styles.doctorStatusDot,
                 {
                   backgroundColor:
-                    isDoctorAvailable(
-                      'General Physician'
-                    )
+                    isDoctorAvailable('General Physician')
                       ? '#16A34A'
                       : '#DC2626',
                 },
@@ -725,75 +600,49 @@ export default function BookingScreen() {
                 styles.doctorStatusText,
                 {
                   color:
-                    isDoctorAvailable(
-                      'General Physician'
-                    )
+                    isDoctorAvailable('General Physician')
                       ? '#16A34A'
                       : '#DC2626',
                 },
               ]}
             >
-              {getDoctorStatus(
-                'General Physician'
-              )}
+              {getDoctorStatus('General Physician')}
             </Text>
-
           </View>
 
-          {!isDoctorAvailable(
-            'General Physician'
-          ) &&
-            getDoctorArrivalTime(
-              'General Physician'
-            ) !== '' && (
-
-              <Text
-                style={styles.arrivalText}
-              >
+          {!isDoctorAvailable('General Physician') &&
+            getDoctorArrivalTime('General Physician') !==
+              '' && (
+              <Text style={styles.arrivalText}>
                 Expected arrival:{' '}
-                {getDoctorArrivalTime(
-                  'General Physician'
-                )}
+                {getDoctorArrivalTime('General Physician')}
               </Text>
-
             )}
-
         </View>
 
         <View
           style={[
             styles.radio,
-            selectedDoctor ===
-              'General Physician' &&
+            selectedDoctor === 'General Physician' &&
               styles.radioSelected,
           ]}
         >
-          {selectedDoctor ===
-            'General Physician' && (
-            <View
-              style={styles.radioInner}
-            />
+          {selectedDoctor === 'General Physician' && (
+            <View style={styles.radioInner} />
           )}
         </View>
-
       </TouchableOpacity>
-
 
       {/* CARDIOLOGIST */}
 
       <TouchableOpacity
         style={[
           styles.doctorCard,
-          selectedDoctor ===
-            'Cardiologist' &&
+          selectedDoctor === 'Cardiologist' &&
             styles.doctorCardSelected,
         ]}
         onPress={() => {
-          if (
-            !isDoctorAvailable(
-              'Cardiologist'
-            )
-          ) {
+          if (!isDoctorAvailable('Cardiologist')) {
             Alert.alert(
               'Doctor Unavailable',
               'Cardiologist is currently unavailable.'
@@ -801,26 +650,19 @@ export default function BookingScreen() {
             return;
           }
 
-          setSelectedDoctor(
-            'Cardiologist'
-          );
+          setSelectedDoctor('Cardiologist');
         }}
         activeOpacity={0.8}
       >
-
         <View style={styles.doctorIcon}>
-          <Text style={styles.doctorIconText}>
-            ❤️
-          </Text>
+          <Text style={styles.doctorIconText}>❤️</Text>
         </View>
 
         <View style={styles.doctorInfo}>
-
           <Text
             style={[
               styles.doctorText,
-              selectedDoctor ===
-                'Cardiologist' &&
+              selectedDoctor === 'Cardiologist' &&
                 styles.doctorTextSelected,
             ]}
           >
@@ -828,15 +670,12 @@ export default function BookingScreen() {
           </Text>
 
           <View style={styles.doctorStatusRow}>
-
             <View
               style={[
                 styles.doctorStatusDot,
                 {
                   backgroundColor:
-                    isDoctorAvailable(
-                      'Cardiologist'
-                    )
+                    isDoctorAvailable('Cardiologist')
                       ? '#16A34A'
                       : '#DC2626',
                 },
@@ -848,75 +687,49 @@ export default function BookingScreen() {
                 styles.doctorStatusText,
                 {
                   color:
-                    isDoctorAvailable(
-                      'Cardiologist'
-                    )
+                    isDoctorAvailable('Cardiologist')
                       ? '#16A34A'
                       : '#DC2626',
                 },
               ]}
             >
-              {getDoctorStatus(
-                'Cardiologist'
-              )}
+              {getDoctorStatus('Cardiologist')}
             </Text>
-
           </View>
 
-          {!isDoctorAvailable(
-            'Cardiologist'
-          ) &&
-            getDoctorArrivalTime(
-              'Cardiologist'
-            ) !== '' && (
-
-              <Text
-                style={styles.arrivalText}
-              >
+          {!isDoctorAvailable('Cardiologist') &&
+            getDoctorArrivalTime('Cardiologist') !==
+              '' && (
+              <Text style={styles.arrivalText}>
                 Expected arrival:{' '}
-                {getDoctorArrivalTime(
-                  'Cardiologist'
-                )}
+                {getDoctorArrivalTime('Cardiologist')}
               </Text>
-
             )}
-
         </View>
 
         <View
           style={[
             styles.radio,
-            selectedDoctor ===
-              'Cardiologist' &&
+            selectedDoctor === 'Cardiologist' &&
               styles.radioSelected,
           ]}
         >
-          {selectedDoctor ===
-            'Cardiologist' && (
-            <View
-              style={styles.radioInner}
-            />
+          {selectedDoctor === 'Cardiologist' && (
+            <View style={styles.radioInner} />
           )}
         </View>
-
       </TouchableOpacity>
-
 
       {/* ORTHOPEDIC */}
 
       <TouchableOpacity
         style={[
           styles.doctorCard,
-          selectedDoctor ===
-            'Orthopedic' &&
+          selectedDoctor === 'Orthopedic' &&
             styles.doctorCardSelected,
         ]}
         onPress={() => {
-          if (
-            !isDoctorAvailable(
-              'Orthopedic'
-            )
-          ) {
+          if (!isDoctorAvailable('Orthopedic')) {
             Alert.alert(
               'Doctor Unavailable',
               'Orthopedic is currently unavailable.'
@@ -924,26 +737,19 @@ export default function BookingScreen() {
             return;
           }
 
-          setSelectedDoctor(
-            'Orthopedic'
-          );
+          setSelectedDoctor('Orthopedic');
         }}
         activeOpacity={0.8}
       >
-
         <View style={styles.doctorIcon}>
-          <Text style={styles.doctorIconText}>
-            🦴
-          </Text>
+          <Text style={styles.doctorIconText}>🦴</Text>
         </View>
 
         <View style={styles.doctorInfo}>
-
           <Text
             style={[
               styles.doctorText,
-              selectedDoctor ===
-                'Orthopedic' &&
+              selectedDoctor === 'Orthopedic' &&
                 styles.doctorTextSelected,
             ]}
           >
@@ -951,15 +757,12 @@ export default function BookingScreen() {
           </Text>
 
           <View style={styles.doctorStatusRow}>
-
             <View
               style={[
                 styles.doctorStatusDot,
                 {
                   backgroundColor:
-                    isDoctorAvailable(
-                      'Orthopedic'
-                    )
+                    isDoctorAvailable('Orthopedic')
                       ? '#16A34A'
                       : '#DC2626',
                 },
@@ -971,75 +774,49 @@ export default function BookingScreen() {
                 styles.doctorStatusText,
                 {
                   color:
-                    isDoctorAvailable(
-                      'Orthopedic'
-                    )
+                    isDoctorAvailable('Orthopedic')
                       ? '#16A34A'
                       : '#DC2626',
                 },
               ]}
             >
-              {getDoctorStatus(
-                'Orthopedic'
-              )}
+              {getDoctorStatus('Orthopedic')}
             </Text>
-
           </View>
 
-          {!isDoctorAvailable(
-            'Orthopedic'
-          ) &&
-            getDoctorArrivalTime(
-              'Orthopedic'
-            ) !== '' && (
-
-              <Text
-                style={styles.arrivalText}
-              >
+          {!isDoctorAvailable('Orthopedic') &&
+            getDoctorArrivalTime('Orthopedic') !==
+              '' && (
+              <Text style={styles.arrivalText}>
                 Expected arrival:{' '}
-                {getDoctorArrivalTime(
-                  'Orthopedic'
-                )}
+                {getDoctorArrivalTime('Orthopedic')}
               </Text>
-
             )}
-
         </View>
 
         <View
           style={[
             styles.radio,
-            selectedDoctor ===
-              'Orthopedic' &&
+            selectedDoctor === 'Orthopedic' &&
               styles.radioSelected,
           ]}
         >
-          {selectedDoctor ===
-            'Orthopedic' && (
-            <View
-              style={styles.radioInner}
-            />
+          {selectedDoctor === 'Orthopedic' && (
+            <View style={styles.radioInner} />
           )}
         </View>
-
       </TouchableOpacity>
-
 
       {/* DERMATOLOGIST */}
 
       <TouchableOpacity
         style={[
           styles.doctorCard,
-          selectedDoctor ===
-            'Dermatologist' &&
+          selectedDoctor === 'Dermatologist' &&
             styles.doctorCardSelected,
         ]}
         onPress={() => {
-          if (
-            !isDoctorAvailable(
-              'Dermatologist'
-            )
-          ) {
+          if (!isDoctorAvailable('Dermatologist')) {
             Alert.alert(
               'Doctor Unavailable',
               'Dermatologist is currently unavailable.'
@@ -1047,26 +824,19 @@ export default function BookingScreen() {
             return;
           }
 
-          setSelectedDoctor(
-            'Dermatologist'
-          );
+          setSelectedDoctor('Dermatologist');
         }}
         activeOpacity={0.8}
       >
-
         <View style={styles.doctorIcon}>
-          <Text style={styles.doctorIconText}>
-            ✨
-          </Text>
+          <Text style={styles.doctorIconText}>✨</Text>
         </View>
 
         <View style={styles.doctorInfo}>
-
           <Text
             style={[
               styles.doctorText,
-              selectedDoctor ===
-                'Dermatologist' &&
+              selectedDoctor === 'Dermatologist' &&
                 styles.doctorTextSelected,
             ]}
           >
@@ -1074,15 +844,12 @@ export default function BookingScreen() {
           </Text>
 
           <View style={styles.doctorStatusRow}>
-
             <View
               style={[
                 styles.doctorStatusDot,
                 {
                   backgroundColor:
-                    isDoctorAvailable(
-                      'Dermatologist'
-                    )
+                    isDoctorAvailable('Dermatologist')
                       ? '#16A34A'
                       : '#DC2626',
                 },
@@ -1094,108 +861,79 @@ export default function BookingScreen() {
                 styles.doctorStatusText,
                 {
                   color:
-                    isDoctorAvailable(
-                      'Dermatologist'
-                    )
+                    isDoctorAvailable('Dermatologist')
                       ? '#16A34A'
                       : '#DC2626',
                 },
               ]}
             >
-              {getDoctorStatus(
-                'Dermatologist'
-              )}
+              {getDoctorStatus('Dermatologist')}
             </Text>
-
           </View>
 
-          {!isDoctorAvailable(
-            'Dermatologist'
-          ) &&
-            getDoctorArrivalTime(
-              'Dermatologist'
-            ) !== '' && (
-
-              <Text
-                style={styles.arrivalText}
-              >
+          {!isDoctorAvailable('Dermatologist') &&
+            getDoctorArrivalTime('Dermatologist') !==
+              '' && (
+              <Text style={styles.arrivalText}>
                 Expected arrival:{' '}
-                {getDoctorArrivalTime(
-                  'Dermatologist'
-                )}
+                {getDoctorArrivalTime('Dermatologist')}
               </Text>
-
             )}
-
         </View>
 
         <View
           style={[
             styles.radio,
-            selectedDoctor ===
-              'Dermatologist' &&
+            selectedDoctor === 'Dermatologist' &&
               styles.radioSelected,
           ]}
         >
-          {selectedDoctor ===
-            'Dermatologist' && (
-            <View
-              style={styles.radioInner}
-            />
+          {selectedDoctor === 'Dermatologist' && (
+            <View style={styles.radioInner} />
           )}
         </View>
-
       </TouchableOpacity>
-
 
       {/* BOOKING INFORMATION */}
 
       <View style={styles.bookingInfoCard}>
-
         <View style={styles.bookingInfoIcon}>
-          <Text style={styles.bookingInfoEmoji}>
-            🎫
-          </Text>
+          <Text style={styles.bookingInfoEmoji}>🎫</Text>
         </View>
 
         <View style={styles.bookingInfoContent}>
-
           <Text style={styles.bookingInfoTitle}>
             Ready to join the queue?
           </Text>
 
           <Text style={styles.bookingInfoText}>
-            Select an available doctor and
-            book your appointment token.
+            Select an available doctor and book your appointment token.
           </Text>
-
         </View>
-
       </View>
-
 
       {/* BOOK BUTTON */}
 
       <TouchableOpacity
-        style={styles.bookButton}
+        style={[
+          styles.bookButton,
+          bookingLoading && { opacity: 0.6 },
+        ]}
         onPress={handleBookAppointment}
+        disabled={bookingLoading}
         activeOpacity={0.85}
       >
-
         <Text style={styles.bookButtonText}>
-          Book Appointment
+          {bookingLoading ? 'Booking...' : 'Book Appointment'}
         </Text>
 
-        <Text style={styles.bookArrow}>
-          →
-        </Text>
-
-      </TouchableOpacity></ScrollView>
+        {!bookingLoading && (
+          <Text style={styles.bookArrow}>→</Text>
+        )}
+      </TouchableOpacity>
+    </ScrollView>
   );
-}
-
-const styles = StyleSheet.create({
-
+}const styles = StyleSheet.create({
   /* MAIN SCREEN */
 
   container: {
@@ -1208,7 +946,6 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 45,
   },
-
 
   /* HEADER */
 
@@ -1277,7 +1014,6 @@ const styles = StyleSheet.create({
     paddingRight: 25,
   },
 
-
   /* SECTION HEADERS */
 
   sectionHeader: {
@@ -1296,7 +1032,6 @@ const styles = StyleSheet.create({
     color: '#8A96A6',
     marginTop: 4,
   },
-
 
   /* SEARCH */
 
@@ -1346,7 +1081,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
 
-
   /* STATUS CARD */
 
   statusCard: {
@@ -1394,7 +1128,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
   },
-
 
   /* HOSPITAL CARD */
 
@@ -1471,7 +1204,6 @@ const styles = StyleSheet.create({
     color: '#5289B4',
   },
 
-
   /* RADIO */
 
   radio: {
@@ -1495,7 +1227,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#1769AA',
   },
-
 
   /* DOCTOR CARDS */
 
@@ -1571,7 +1302,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-
   /* BOOKING INFO */
 
   bookingInfoCard: {
@@ -1616,6 +1346,7 @@ const styles = StyleSheet.create({
     color: '#607D9A',
     lineHeight: 17,
   },
+
   /* BOOK BUTTON */
 
   bookButton: {
@@ -1650,5 +1381,4 @@ const styles = StyleSheet.create({
     marginTop: -2,
     fontWeight: '500',
   },
-
 });
