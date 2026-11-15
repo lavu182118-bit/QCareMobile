@@ -1,20 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 type Appointment = {
   id: number;
@@ -28,88 +27,85 @@ type Appointment = {
 };
 
 export default function HospitalAppointmentsScreen() {
-  const [appointments, setAppointments] =
-    useState<Appointment[]>([]);
-
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [hospitalName, setHospitalName] =
-    useState('Hospital');
-
+  const [hospitalName, setHospitalName] = useState('Hospital');
   const [total, setTotal] = useState(0);
   const [completed, setCompleted] = useState(0);
   const [remaining, setRemaining] = useState(0);
 
-  // ==================================================
-  // LOAD APPOINTMENTS
-  // ==================================================
+  // SAFE RESPONSE PARSER
+  const readResponse = async (response: Response) => {
+    const text = await response.text();
 
-  const loadAppointments = async () => {
     try {
-      const loggedIn =
-        await AsyncStorage.getItem('hospitalLoggedIn');
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
+  };
 
-      const hospitalDataString =
-        await AsyncStorage.getItem('currentHospital');
+  // LOAD APPOINTMENTS
+  const loadAppointments = useCallback(async () => {
+    try {
+      const loggedIn = await AsyncStorage.getItem('hospitalLoggedIn');
+      const hospitalDataString = await AsyncStorage.getItem('currentHospital');
 
-      if (
-        loggedIn !== 'true' ||
-        !hospitalDataString
-      ) {
+      if (loggedIn !== 'true' || !hospitalDataString) {
         router.replace('/hospital-login');
         return;
       }
 
-      const hospitalData =
-        JSON.parse(hospitalDataString);
+      const hospitalData = JSON.parse(hospitalDataString);
 
-      setHospitalName(
-        hospitalData.name || 'Hospital'
-      );
+      if (!hospitalData?.id) {
+        Alert.alert(
+          'Hospital Error',
+          'Hospital information is missing. Please login again.'
+        );
+        router.replace('/hospital-login');
+        return;
+      }
+
+      setHospitalName(hospitalData.name || 'Hospital');
 
       const hospitalId = hospitalData.id;
 
+      // APPOINTMENTS
       const appointmentResponse = await fetch(
         `${API_URL}/hospital-appointments/${hospitalId}`
       );
 
-      const appointmentData =
-        await appointmentResponse.json();
+      const appointmentData = await readResponse(appointmentResponse);
 
-      if (appointmentData.success) {
-        setAppointments(
-          appointmentData.appointments || []
-        );
-      } else {
+      if (!appointmentResponse.ok || !appointmentData.success) {
         Alert.alert(
           'Unable to Load Appointments',
-          appointmentData.message ||
-            'Unable to load appointments.'
+          appointmentData.message || 'Unable to load appointments.'
+        );
+      } else {
+        setAppointments(
+          Array.isArray(appointmentData.appointments)
+            ? appointmentData.appointments
+            : []
         );
       }
 
+      // SUMMARY
       const summaryResponse = await fetch(
         `${API_URL}/hospital-appointment-summary/${hospitalId}`
       );
 
-      const summaryData =
-        await summaryResponse.json();
+      const summaryData = await readResponse(summaryResponse);
 
-      if (summaryData.success) {
+      if (summaryResponse.ok && summaryData.success) {
         setTotal(Number(summaryData.total) || 0);
-        setCompleted(
-          Number(summaryData.completed) || 0
-        );
-        setRemaining(
-          Number(summaryData.remaining) || 0
-        );
+        setCompleted(Number(summaryData.completed) || 0);
+        setRemaining(Number(summaryData.remaining) || 0);
       }
     } catch (error) {
-      console.log(
-        'LOAD HOSPITAL APPOINTMENTS ERROR:',
-        error
-      );
+      console.log('LOAD HOSPITAL APPOINTMENTS ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -119,42 +115,28 @@ export default function HospitalAppointmentsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  // ==================================================
-  // INITIAL LOAD
-  // ==================================================
-
-  useEffect(() => {
-    loadAppointments();
   }, []);
 
-  // ==================================================
-  // REFRESH
-  // ==================================================
+  // INITIAL LOAD
+  useEffect(() => {
+    loadAppointments();
+  }, [loadAppointments]);
 
+  // REFRESH
   const handleRefresh = () => {
+    if (refreshing) return;
     setRefreshing(true);
     loadAppointments();
   };
 
-  // ==================================================
   // FORMAT DATE
-  // ==================================================
-
-  const formatAppointmentTime = (
-    appointmentTime: string
-  ) => {
-    if (!appointmentTime) {
-      return 'Not available';
-    }
+  const formatAppointmentTime = (appointmentTime: string) => {
+    if (!appointmentTime) return 'Not available';
 
     try {
       const date = new Date(appointmentTime);
 
-      if (isNaN(date.getTime())) {
-        return appointmentTime;
-      }
+      if (isNaN(date.getTime())) return appointmentTime;
 
       return date.toLocaleString('en-IN', {
         day: '2-digit',
@@ -168,13 +150,9 @@ export default function HospitalAppointmentsScreen() {
     }
   };
 
-  // ==================================================
   // STATUS STYLE
-  // ==================================================
-
   const getStatusStyle = (status: string) => {
-    const normalized =
-      status?.toLowerCase();
+    const normalized = status?.toLowerCase();
 
     if (normalized === 'completed') {
       return {
@@ -210,42 +188,28 @@ export default function HospitalAppointmentsScreen() {
     };
   };
 
-  // ==================================================
   // LOADING
-  // ==================================================
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingCard}>
           <View style={styles.loadingIcon}>
-            <Text style={styles.loadingIconText}>
-              Q
-            </Text>
+            <Text style={styles.loadingIconText}>Q</Text>
           </View>
 
-          <ActivityIndicator
-            size="large"
-            color="#2563EB"
-          />
+          <ActivityIndicator size="large" color="#2563EB" />
 
-          <Text style={styles.loadingTitle}>
-            Loading appointments
-          </Text>
+          <Text style={styles.loadingTitle}>Loading appointments</Text>
 
           <Text style={styles.loadingText}>
-            Please wait while we load your hospital
-            appointments.
+            Please wait while we load your hospital appointments.
           </Text>
         </View>
       </View>
     );
   }
 
-  // ==================================================
   // MAIN SCREEN
-  // ==================================================
-
   return (
     <View style={styles.container}>
       <ScrollView
@@ -259,19 +223,11 @@ export default function HospitalAppointmentsScreen() {
           />
         }
       >
-
         {/* HEADER */}
-
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.headerSmall}>
-              HOSPITAL APPOINTMENTS
-            </Text>
-
-            <Text
-              style={styles.headerTitle}
-              numberOfLines={1}
-            >
+            <Text style={styles.headerSmall}>HOSPITAL APPOINTMENTS</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
               {hospitalName}
             </Text>
           </View>
@@ -281,46 +237,30 @@ export default function HospitalAppointmentsScreen() {
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
-            <Text style={styles.backArrow}>
-              ‹
-            </Text>
-
-            <Text style={styles.backButtonText}>
-              Back
-            </Text>
+            <Text style={styles.backArrow}>‹</Text>
+            <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
         </View>
 
         {/* INTRO */}
-
         <View style={styles.introSection}>
           <View style={styles.introIcon}>
-            <Text style={styles.introIconText}>
-              A
-            </Text>
+            <Text style={styles.introIconText}>A</Text>
           </View>
 
           <View style={styles.introTextArea}>
-            <Text style={styles.pageTitle}>
-              Appointment Management
-            </Text>
-
+            <Text style={styles.pageTitle}>Appointment Management</Text>
             <Text style={styles.pageSubtitle}>
-              View and monitor appointments registered
-              at your hospital.
+              View and monitor appointments registered at your hospital.
             </Text>
           </View>
         </View>
 
         {/* TODAY SUMMARY */}
-
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
             <View>
-              <Text style={styles.summaryTitle}>
-                Today's Overview
-              </Text>
-
+              <Text style={styles.summaryTitle}>Today's Overview</Text>
               <Text style={styles.summarySubtitle}>
                 Appointment activity for today
               </Text>
@@ -328,106 +268,60 @@ export default function HospitalAppointmentsScreen() {
 
             <View style={styles.liveBadge}>
               <View style={styles.liveDot} />
-
-              <Text style={styles.liveText}>
-                TODAY
-              </Text>
+              <Text style={styles.liveText}>TODAY</Text>
             </View>
           </View>
 
           <View style={styles.summaryRow}>
-
             <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.totalNumber,
-                ]}
-              >
+              <Text style={[styles.summaryNumber, styles.totalNumber]}>
                 {total}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Total
-              </Text>
+              <Text style={styles.summaryLabel}>Total</Text>
             </View>
 
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.remainingNumber,
-                ]}
-              >
+              <Text style={[styles.summaryNumber, styles.remainingNumber]}>
                 {remaining}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Remaining
-              </Text>
+              <Text style={styles.summaryLabel}>Remaining</Text>
             </View>
 
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.completedNumber,
-                ]}
-              >
+              <Text style={[styles.summaryNumber, styles.completedNumber]}>
                 {completed}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Completed
-              </Text>
+              <Text style={styles.summaryLabel}>Completed</Text>
             </View>
-
           </View>
         </View>
 
         {/* APPOINTMENT HEADER */}
-
         <View style={styles.appointmentHeader}>
           <View style={styles.appointmentHeaderText}>
-            <Text style={styles.appointmentTitle}>
-              All Appointments
-            </Text>
-
+            <Text style={styles.appointmentTitle}>All Appointments</Text>
             <Text style={styles.appointmentSubtitle}>
-              Patient appointments registered at this
-              hospital
+              Patient appointments registered at this hospital
             </Text>
           </View>
 
           <View style={styles.appointmentCountBadge}>
-            <Text style={styles.appointmentCount}>
-              {appointments.length}
-            </Text>
-
+            <Text style={styles.appointmentCount}>{appointments.length}</Text>
             <Text style={styles.appointmentCountLabel}>
-              {appointments.length === 1
-                ? 'Patient'
-                : 'Patients'}
+              {appointments.length === 1 ? 'Patient' : 'Patients'}
             </Text>
           </View>
         </View>
 
         {/* EMPTY */}
-
         {appointments.length === 0 && (
           <View style={styles.emptyAppointmentCard}>
-            <View
-              style={
-                styles.emptyAppointmentIconCircle
-              }
-            >
-              <Text style={styles.emptyAppointmentIcon}>
-                ✓
-              </Text>
+            <View style={styles.emptyAppointmentIconCircle}>
+              <Text style={styles.emptyAppointmentIcon}>✓</Text>
             </View>
 
             <Text style={styles.emptyAppointmentTitle}>
@@ -435,35 +329,21 @@ export default function HospitalAppointmentsScreen() {
             </Text>
 
             <Text style={styles.emptyAppointmentText}>
-              There are currently no appointments
-              registered for this hospital.
+              There are currently no appointments registered for this hospital.
             </Text>
           </View>
         )}
 
         {/* APPOINTMENTS */}
-
         {appointments.map((appointment) => {
-          const statusStyle =
-            getStatusStyle(
-              appointment.status
-            );
+          const statusStyle = getStatusStyle(appointment.status);
 
           return (
-            <View
-              key={appointment.id}
-              style={styles.appointmentCard}
-            >
-
+            <View key={appointment.id} style={styles.appointmentCard}>
               <View style={styles.appointmentTop}>
                 <View style={styles.tokenContainer}>
-                  <Text style={styles.tokenLabel}>
-                    TOKEN NUMBER
-                  </Text>
-
-                  <Text style={styles.tokenText}>
-                    {appointment.token}
-                  </Text>
+                  <Text style={styles.tokenLabel}>TOKEN NUMBER</Text>
+                  <Text style={styles.tokenText}>{appointment.token}</Text>
                 </View>
 
                 <View
@@ -494,22 +374,15 @@ export default function HospitalAppointmentsScreen() {
                 <View style={styles.patientAvatar}>
                   <Text style={styles.patientAvatarText}>
                     {appointment.patient_name
-                      ? appointment.patient_name
-                          .charAt(0)
-                          .toUpperCase()
+                      ? appointment.patient_name.charAt(0).toUpperCase()
                       : 'P'}
                   </Text>
                 </View>
 
                 <View style={styles.patientInfo}>
-                  <Text
-                    style={styles.patientNameLarge}
-                    numberOfLines={1}
-                  >
-                    {appointment.patient_name ||
-                      'Patient'}
+                  <Text style={styles.patientNameLarge} numberOfLines={1}>
+                    {appointment.patient_name || 'Patient'}
                   </Text>
-
                   <Text style={styles.patientIdText}>
                     Appointment #{appointment.id}
                   </Text>
@@ -517,77 +390,68 @@ export default function HospitalAppointmentsScreen() {
               </View>
 
               <View style={styles.appointmentDetailsRow}>
-
-                <View
-                  style={styles.appointmentDetailBox}
-                >
-                  <Text
-                    style={styles.appointmentDetailLabel}
-                  >
-                    DOCTOR
-                  </Text>
-
-                  <Text
-                    style={styles.appointmentDetailValue}
-                    numberOfLines={2}
-                  >
+                <View style={styles.appointmentDetailBox}>
+                  <Text style={styles.appointmentDetailLabel}>DOCTOR</Text>
+                  <Text style={styles.appointmentDetailValue} numberOfLines={2}>
                     {appointment.doctor}
                   </Text>
                 </View>
 
-                <View
-                  style={styles.appointmentDetailBox}
-                >
-                  <Text
-                    style={styles.appointmentDetailLabel}
-                  >
-                    DATE & TIME
-                  </Text>
-
-                  <Text
-                    style={styles.appointmentDetailValue}
-                    numberOfLines={2}
-                  >
-                    {formatAppointmentTime(
-                      appointment.appointment_time
-                    )}
+                <View style={styles.appointmentDetailBox}>
+                  <Text style={styles.appointmentDetailLabel}>DATE & TIME</Text>
+                  <Text style={styles.appointmentDetailValue} numberOfLines={2}>
+                    {formatAppointmentTime(appointment.appointment_time)}
                   </Text>
                 </View>
-
               </View>
             </View>
           );
         })}
-
       </ScrollView>
     </View>
   );
 }
-// ==================================================
-// STYLES
-// ==================================================
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FB',
+    backgroundColor: '#F6F8FC',
   },
 
   scrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
     paddingBottom: 40,
   },
 
-  // ==================================================
-  // HEADER
-  // ==================================================
+  // LOADING
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#F6F8FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
+  loadingCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    marginTop: 12,
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // HEADER
   header: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 52,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 22,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EAEFF5',
   },
 
   headerLeft: {
@@ -596,67 +460,78 @@ const styles = StyleSheet.create({
   },
 
   headerSmall: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: '#64748B',
+    color: '#2563EB',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
     marginBottom: 5,
   },
 
   headerTitle: {
-    fontSize: 23,
-    fontWeight: '800',
     color: '#0F172A',
+    fontSize: 20,
+    fontWeight: '800',
   },
 
   backButton: {
+    height: 42,
+    paddingHorizontal: 13,
+    borderRadius: 13,
+    backgroundColor: '#F1F5F9',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    justifyContent: 'center',
   },
 
   backArrow: {
-    fontSize: 24,
-    lineHeight: 22,
-    color: '#2563EB',
-    marginRight: 3,
+    color: '#0F172A',
+    fontSize: 25,
+    lineHeight: 26,
+    marginRight: 4,
+    marginTop: -2,
   },
 
   backButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
     color: '#334155',
+    fontSize: 12,
+    fontWeight: '800',
   },
 
-  // ==================================================
   // INTRO
-  // ==================================================
-
   introSection: {
+    marginHorizontal: 18,
+    marginTop: 20,
+    padding: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: '#E9EEF5',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 2,
   },
 
   introIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 17,
-    backgroundColor: '#2563EB',
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 13,
   },
 
   introIconText: {
-    fontSize: 24,
+    color: '#2563EB',
+    fontSize: 21,
     fontWeight: '900',
-    color: '#FFFFFF',
   },
 
   introTextArea: {
@@ -664,80 +539,130 @@ const styles = StyleSheet.create({
   },
 
   pageTitle: {
-    fontSize: 21,
-    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 4,
+    fontSize: 17,
+    fontWeight: '800',
   },
 
   pageSubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
     color: '#64748B',
+    fontSize: 11,
+    marginTop: 4,
+    lineHeight: 17,
   },
 
-  // ==================================================
-  // SUMMARY
-  // ==================================================
+  // SECTION HEADER
+  sectionHeader: {
+    marginTop: 24,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
 
+  sectionTitle: {
+    color: '#0F172A',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  sectionHint: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // DOCTOR FILTER
+  doctorFilterContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 3,
+  },
+
+  doctorFilter: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginRight: 8,
+  },
+
+  doctorFilterSelected: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+
+  doctorFilterText: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  doctorFilterTextSelected: {
+    color: '#FFFFFF',
+  },
+
+  // SUMMARY
   summaryCard: {
+    marginHorizontal: 18,
+    marginTop: 18,
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 18,
-    marginBottom: 27,
+    padding: 17,
     borderWidth: 1,
-    borderColor: '#E8EDF5',
+    borderColor: '#E9EEF5',
     shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
     shadowOffset: {
       width: 0,
-      height: 5,
+      height: 4,
     },
-    elevation: 3,
+    elevation: 2,
   },
 
   summaryHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 17,
   },
 
   summaryTitle: {
-    fontSize: 16,
-    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 4,
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   summarySubtitle: {
-    fontSize: 12,
-    color: '#64748B',
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 3,
   },
 
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#ECFDF3',
     paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#EFF6FF',
   },
 
   liveDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#16A34A',
     marginRight: 5,
   },
 
   liveText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#2563EB',
-    letterSpacing: 0.5,
+    color: '#15803D',
+    fontSize: 9,
+    fontWeight: '900',
   },
 
   summaryRow: {
@@ -750,101 +675,137 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  summaryNumber: {
-    fontSize: 24,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-
-  totalNumber: {
-    color: '#2563EB',
-  },
-
-  remainingNumber: {
-    color: '#D97706',
-  },
-
-  completedNumber: {
-    color: '#059669',
-  },
-
-  summaryLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-
   summaryDivider: {
     width: 1,
     height: 34,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#EAEFF5',
   },
 
-  // ==================================================
-  // APPOINTMENT HEADER
-  // ==================================================
-
-  appointmentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-
-  appointmentHeaderText: {
-    flex: 1,
-    paddingRight: 12,
-  },
-
-  appointmentTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-
-  appointmentSubtitle: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#64748B',
-  },
-
-  appointmentCountBadge: {
-    minWidth: 52,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-    borderRadius: 13,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  appointmentCount: {
-    fontSize: 17,
+  summaryNumber: {
+    fontSize: 21,
     fontWeight: '900',
+  },
+
+  totalNumber: {
+    color: '#0F172A',
+  },
+
+  waitingNumber: {
+    color: '#D97706',
+  },
+
+  consultationNumber: {
     color: '#2563EB',
   },
 
-  appointmentCountLabel: {
+  completedNumber: {
+    color: '#16A34A',
+  },
+
+  summaryLabel: {
+    color: '#64748B',
     fontSize: 9,
     fontWeight: '700',
+    marginTop: 4,
+  },
+
+  // QUEUE HEADER
+  queueHeader: {
+    marginHorizontal: 20,
+    marginTop: 25,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  queueTitle: {
+    color: '#0F172A',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+
+  queueSubtitle: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 3,
+  },
+
+  queueCountBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+
+  queueCount: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  queueCountLabel: {
     color: '#64748B',
+    fontSize: 8,
+    fontWeight: '700',
     marginTop: 1,
   },
 
-  // ==================================================
-  // APPOINTMENT CARD
-  // ==================================================
-
-  appointmentCard: {
+  // EMPTY
+  emptyCard: {
+    marginHorizontal: 18,
     backgroundColor: '#FFFFFF',
-    borderRadius: 19,
-    padding: 17,
-    marginBottom: 13,
+    borderRadius: 20,
+    paddingHorizontal: 25,
+    paddingVertical: 32,
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E8EDF5',
+    borderColor: '#E9EEF5',
+  },
+
+  emptyIconCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#ECFDF3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+
+  emptyIcon: {
+    color: '#16A34A',
+    fontSize: 25,
+    fontWeight: '900',
+  },
+
+  emptyTitle: {
+    color: '#0F172A',
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  emptyText: {
+    color: '#64748B',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+
+  // PATIENT CARD
+  patientCard: {
+    marginHorizontal: 18,
+    marginBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 17,
+    borderWidth: 1,
+    borderColor: '#E7ECF3',
     shadowColor: '#0F172A',
-    shadowOpacity: 0.045,
+    shadowOpacity: 0.035,
     shadowRadius: 9,
     shadowOffset: {
       width: 0,
@@ -853,29 +814,330 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
+  patientTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  tokenContainer: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+
+  tokenLabel: {
+    color: '#64748B',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+  },
+
+  tokenText: {
+    color: '#2563EB',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+
+  // STATUS
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+
+  waitingBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+
+  consultationBadge: {
+    backgroundColor: '#DBEAFE',
+  },
+
+  completedBadge: {
+    backgroundColor: '#DCFCE7',
+  },
+
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
+  },
+
+  waitingDot: {
+    backgroundColor: '#D97706',
+  },
+
+  consultationDot: {
+    backgroundColor: '#2563EB',
+  },
+
+  completedDot: {
+    backgroundColor: '#16A34A',
+  },
+
+  statusText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  waitingText: {
+    color: '#B45309',
+  },
+
+  consultationText: {
+    color: '#1D4ED8',
+  },
+
+  completedText: {
+    color: '#15803D',
+  },
+
+  // PATIENT
+  patientName: {
+    color: '#0F172A',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 16,
+  },
+
+  patientDetails: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+
+  detailBox: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 11,
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+  },
+
+  detailLabel: {
+    color: '#94A3B8',
+    fontSize: 8,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+
+  detailValue: {
+    color: '#334155',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // BUTTONS
+  callButton: {
+    height: 48,
+    width: '100%',
+    backgroundColor: '#2563EB',
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 15,
+  },
+
+  callIcon: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginRight: 7,
+  },
+
+  callButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  completeButton: {
+    height: 48,
+    width: '100%',
+    backgroundColor: '#16A34A',
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 13,
+  },
+
+  completeIcon: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    marginRight: 7,
+  },
+
+  completeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  disabledButton: {
+    opacity: 0.65,
+  },
+
+  // COMPLETED
+  completedMessage: {
+    width: '100%',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 13,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+
+  completedMessageText: {
+    color: '#15803D',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  // ADD MISSING APPOINTMENT STYLES
+
+  loadingIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+
+  loadingIconText: {
+    color: '#2563EB',
+    fontSize: 28,
+    fontWeight: '900',
+  },
+
+  loadingTitle: {
+    color: '#0F172A',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 15,
+  },
+
+  remainingNumber: {
+    color: '#D97706',
+  },
+
+  appointmentHeader: {
+    marginHorizontal: 18,
+    marginTop: 25,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  appointmentHeaderText: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  appointmentTitle: {
+    color: '#0F172A',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+
+  appointmentSubtitle: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 3,
+  },
+
+  appointmentCountBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+
+  appointmentCount: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  appointmentCountLabel: {
+    color: '#64748B',
+    fontSize: 8,
+    fontWeight: '700',
+  },
+
+  emptyAppointmentCard: {
+    marginHorizontal: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E9EEF5',
+  },
+
+  emptyAppointmentIconCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#ECFDF3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+
+  emptyAppointmentIcon: {
+    color: '#16A34A',
+    fontSize: 25,
+    fontWeight: '900',
+  },
+
+  emptyAppointmentTitle: {
+    color: '#0F172A',
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  emptyAppointmentText: {
+    color: '#64748B',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+
+  appointmentCard: {
+    marginHorizontal: 18,
+    marginBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 17,
+    borderWidth: 1,
+    borderColor: '#E7ECF3',
+    elevation: 2,
+  },
+
   appointmentTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-
-  tokenContainer: {
-    flex: 1,
-  },
-
-  tokenLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.7,
-    marginBottom: 3,
-  },
-
-  tokenText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#2563EB',
   },
 
   appointmentStatusBadge: {
@@ -887,89 +1149,49 @@ const styles = StyleSheet.create({
   },
 
   appointmentStatusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
   },
 
   appointmentStatusText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
 
-  waitingBadge: {
-    backgroundColor: '#FFF7ED',
-  },
-
-  waitingDot: {
-    backgroundColor: '#F59E0B',
-  },
-
-  waitingText: {
-    color: '#B45309',
-  },
-
-  consultationBadge: {
-    backgroundColor: '#F5F3FF',
-  },
-
-  consultationDot: {
-    backgroundColor: '#8B5CF6',
-  },
-
-  consultationText: {
-    color: '#6D28D9',
-  },
-
-  completedBadge: {
-    backgroundColor: '#ECFDF5',
-  },
-
-  completedDot: {
-    backgroundColor: '#10B981',
-  },
-
-  completedText: {
-    color: '#047857',
-  },
-
   cancelledBadge: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#FEE2E2',
   },
 
   cancelledDot: {
-    backgroundColor: '#EF4444',
+    backgroundColor: '#DC2626',
   },
 
   cancelledText: {
     color: '#B91C1C',
   },
 
-  // ==================================================
-  // PATIENT
-  // ==================================================
-
   patientSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginTop: 16,
   },
 
   patientAvatar: {
     width: 45,
     height: 45,
-    borderRadius: 14,
+    borderRadius: 15,
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    marginRight: 12,
   },
 
   patientAvatarText: {
+    color: '#2563EB',
     fontSize: 18,
     fontWeight: '900',
-    color: '#2563EB',
   },
 
   patientInfo: {
@@ -977,157 +1199,42 @@ const styles = StyleSheet.create({
   },
 
   patientNameLarge: {
-    fontSize: 17,
-    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 3,
+    fontSize: 16,
+    fontWeight: '800',
   },
 
   patientIdText: {
-    fontSize: 10,
     color: '#94A3B8',
-    fontWeight: '600',
+    fontSize: 10,
+    marginTop: 4,
   },
-
-  // ==================================================
-  // DETAILS
-  // ==================================================
 
   appointmentDetailsRow: {
     flexDirection: 'row',
-    gap: 9,
+    gap: 10,
+    marginTop: 14,
   },
 
   appointmentDetailBox: {
     flex: 1,
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 11,
+    padding: 11,
     borderWidth: 1,
-    borderColor: '#EEF2F7',
+    borderColor: '#EEF2F6',
   },
 
   appointmentDetailLabel: {
-    fontSize: 9,
-    fontWeight: '800',
     color: '#94A3B8',
-    letterSpacing: 0.5,
-    marginBottom: 5,
+    fontSize: 8,
+    fontWeight: '800',
+    marginBottom: 4,
   },
 
   appointmentDetailValue: {
-    fontSize: 12,
-    fontWeight: '700',
     color: '#334155',
-    lineHeight: 17,
-  },
-
-  // ==================================================
-  // EMPTY STATE
-  // ==================================================
-
-  emptyAppointmentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 22,
-    paddingVertical: 38,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E8EDF5',
-  },
-
-  emptyAppointmentIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-
-  emptyAppointmentIcon: {
-    fontSize: 27,
-    fontWeight: '900',
-    color: '#2563EB',
-  },
-
-  emptyAppointmentTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-
-  emptyAppointmentText: {
-    fontSize: 12,
-    lineHeight: 19,
-    color: '#64748B',
-    textAlign: 'center',
-  },
-
-  // ==================================================
-  // LOADING
-  // ==================================================
-
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#F5F7FB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-
-  loadingCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    paddingVertical: 32,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E8EDF5',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    elevation: 3,
-  },
-
-  loadingIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-
-  loadingIconText: {
-    fontSize: 25,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-
-  loadingTitle: {
-    marginTop: 14,
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  loadingText: {
-    marginTop: 6,
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#64748B',
-    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
