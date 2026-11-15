@@ -600,20 +600,29 @@ export default function AddPatientScreen() {
         }
       );
 
-      const queueData =
-        await queueResponse.json();
+     const queueText = await queueResponse.text();
 
-      if (
-        !queueResponse.ok ||
-        !queueData.success
-      ) {
-        Alert.alert(
-          'Unable to Add Patient',
-          queueData.message ||
-            'Patient could not be added to the queue.'
-        );
-        return;
-      }
+console.log('QUEUE STATUS:', queueResponse.status);
+console.log('QUEUE RESPONSE:', queueText);
+
+let queueData: any = {};
+
+try {
+  queueData = JSON.parse(queueText);
+} catch {
+  queueData = {};
+}
+
+if (!queueResponse.ok || !queueData.success) {
+  Alert.alert(
+    'Queue Error',
+    `Status: ${queueResponse.status}\n` +
+      `Message: ${
+        queueData.message || queueText || 'Unknown server error'
+      }`
+  );
+  return;
+}
 
       const appointmentResponse = await fetch(
         `${SERVER_URL}/hospital-create-appointment`,

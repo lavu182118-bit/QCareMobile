@@ -4,15 +4,15 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL ='https://qcare-backend-o8za.onrender.com';
+
 
 export default function PatientDashboardScreen() {
   const [checkingSession, setCheckingSession] = useState(true);

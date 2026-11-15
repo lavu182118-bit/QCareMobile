@@ -3,15 +3,17 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 type HospitalData = {
   id?: number;
@@ -21,10 +23,28 @@ type HospitalData = {
   phone?: string;
   address?: string;
   status?: string;
+  reactivation_status?: string;
+};
+
+type NotificationData = {
+  is_read?: boolean | number | string;
+};
+
+type HospitalStats = {
+  patients: number;
+  waiting: number;
+  completed: number;
+  appointments: number;
+};
+
+const initialStats: HospitalStats = {
+  patients: 0,
+  waiting: 0,
+  completed: 0,
+  appointments: 0,
 };
 
 export default function HospitalDashboardScreen() {
-
   const [hospital, setHospital] =
     useState<HospitalData | null>(null);
 
@@ -37,160 +57,194 @@ export default function HospitalDashboardScreen() {
   const [unreadNotifications, setUnreadNotifications] =
     useState(0);
 
-  const [stats, setStats] = useState({
-    patients: 0,
-    waiting: 0,
-    completed: 0,
-    appointments: 0,
-  });
+  const [stats, setStats] =
+    useState<HospitalStats>(initialStats);
 
-  const loadHospital = async () => {
+  const [requestingReactivation, setRequestingReactivation] =
+    useState(false);
+
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+
+  const isActive =
+    (hospital?.status || 'Active').toLowerCase() === 'active';
+
+  const isDeactivated =
+    (hospital?.status || '').toLowerCase() === 'deactivated';
+
+  const reactivationStatus =
+    (hospital?.reactivation_status || '').toLowerCase();
+
+  const isReactivationPending =
+    reactivationStatus === 'pending';
+
+  // SAFE JSON RESPONSE
+  const readResponse = async (response: Response) => {
+    const text = await response.text();
+
+    if (!text) return {};
 
     try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
+  };
 
+  // LOAD HOSPITAL SESSION
+  const loadHospital = async () => {
+    try {
       const loggedIn =
-        await AsyncStorage.getItem(
-          'hospitalLoggedIn'
-        );
+        await AsyncStorage.getItem('hospitalLoggedIn');
 
       const storedHospital =
-        await AsyncStorage.getItem(
-          'currentHospital'
-        );
+        await AsyncStorage.getItem('currentHospital');
 
-      if (
-        loggedIn !== 'true' ||
-        !storedHospital
-      ) {
-
+      if (loggedIn !== 'true' || !storedHospital) {
+        setHospital(null);
         router.replace('/hospital-login');
         return;
-
       }
 
-      const hospitalData =
-        JSON.parse(storedHospital);
+      let hospitalData: HospitalData;
+
+      try {
+        hospitalData = JSON.parse(storedHospital);
+      } catch {
+        await AsyncStorage.removeItem('hospitalLoggedIn');
+        await AsyncStorage.removeItem('currentHospital');
+        router.replace('/hospital-login');
+        return;
+      }
+
+      if (!hospitalData?.id) {
+        Alert.alert(
+          'Session Error',
+          'Hospital information is incomplete. Please login again.'
+        );
+
+        await AsyncStorage.removeItem('hospitalLoggedIn');
+        await AsyncStorage.removeItem('currentHospital');
+        router.replace('/hospital-login');
+        return;
+      }
 
       setHospital(hospitalData);
 
-      // LOAD UNREAD NOTIFICATION COUNT
+      // LOAD NOTIFICATIONS
       try {
-
-        const notificationResponse =
-          await fetch(
-            `https:// 'https://qcare-backend-o8za.onrender.com';
-/hospital-notifications/${hospitalData.id}`
-          );
-
-        const notificationData =
-          await notificationResponse.json();
-
-        if (
-          notificationData.success &&
-          Array.isArray(
-            notificationData.notifications
-          )
-        ) {
-
-          const unreadCount =
-            notificationData.notifications.filter(
-              (notification: any) =>
-                !notification.is_read
-            ).length;
-
-          setUnreadNotifications(
-            unreadCount
-          );
-
-        }
-
-      } catch (error) {
-
-        console.log(
-          'NOTIFICATION COUNT ERROR:',
-          error
+        const notificationResponse = await fetch(
+          `${API_URL}/hospital-notifications/${hospitalData.id}`
         );
 
+        const notificationData =
+          await readResponse(notificationResponse);
+
+        if (
+          notificationResponse.ok &&
+          notificationData.success &&
+          Array.isArray(notificationData.notifications)
+        ) {
+          const unreadCount =
+            notificationData.notifications.filter(
+              (notification: NotificationData) => {
+                const value = notification.is_read;
+
+                return (
+                  value === false ||
+                  value === 0 ||
+                  value === '0' ||
+                  value === 'false' ||
+                  value == null
+                );
+              }
+            ).length;
+
+          setUnreadNotifications(unreadCount);
+        } else {
+          setUnreadNotifications(0);
+        }
+      } catch (error) {
+        console.log('NOTIFICATION COUNT ERROR:', error);
       }
 
+      // LOAD HOSPITAL STATS
       try {
-
         const response = await fetch(
-  `https:// 'https://qcare-backend-o8za.onrender.com';
-/hospital-stats/${hospitalData.id}`
-);
+          `${API_URL}/hospital-stats/${hospitalData.id}`
+        );
 
-        const data =
-          await response.json();
+        const data = await readResponse(response);
 
-        if (data.success) {
-
-          setStats(data.stats);
-
+        if (response.ok && data.success && data.stats) {
+          setStats({
+            patients: Number(data.stats.patients) || 0,
+            waiting: Number(data.stats.waiting) || 0,
+            completed: Number(data.stats.completed) || 0,
+            appointments: Number(data.stats.appointments) || 0,
+          });
+        } else {
+          setStats(initialStats);
         }
+      } catch (error) {
+        console.log('HOSPITAL STATS ERROR:', error);
+        setStats(initialStats);
+      }
 
-        const appointmentResponse =
-  await fetch(
-    `https:// 'https://qcare-backend-o8za.onrender.com';
-/hospital-appointments-count/${hospitalData.id}`
-  );
+      // LOAD APPOINTMENT COUNT
+      try {
+        const appointmentResponse = await fetch(
+          `${API_URL}/hospital-appointments-count/${hospitalData.id}`
+        );
 
         const appointmentData =
-          await appointmentResponse.json();
+          await readResponse(appointmentResponse);
 
-        if (appointmentData.success) {
+        if (
+          appointmentResponse.ok &&
+          appointmentData.success
+        ) {
+          const appointmentCount =
+            Number(appointmentData.appointments) || 0;
 
           setStats((currentStats) => ({
             ...currentStats,
-
-            appointments:
-              appointmentData.appointments,
+            appointments: appointmentCount,
           }));
-
         }
-
       } catch (error) {
-
-        console.log(
-          'HOSPITAL STATS ERROR:',
-          error
-        );
-
+        console.log('APPOINTMENT COUNT ERROR:', error);
       }
-
     } catch (error) {
+      console.log('HOSPITAL SESSION ERROR:', error);
 
-      console.log(
-        'HOSPITAL SESSION ERROR:',
-        error
+      Alert.alert(
+        'Session Error',
+        'Unable to load hospital session. Please login again.'
       );
 
       router.replace('/hospital-login');
-
     } finally {
-
       setCheckingSession(false);
       setRefreshing(false);
-
     }
-
   };
 
   useEffect(() => {
-
     loadHospital();
-
   }, []);
 
+  // REFRESH
   const handleRefresh = () => {
+    if (refreshing) return;
 
     setRefreshing(true);
-
     loadHospital();
-
   };
 
-  const handleLogout = async () => {
+  // LOGOUT
+  const handleLogout = () => {
+    if (loggingOut) return;
 
     Alert.alert(
       'Logout',
@@ -200,95 +254,108 @@ export default function HospitalDashboardScreen() {
           text: 'Cancel',
           style: 'cancel',
         },
-
         {
           text: 'Logout',
           style: 'destructive',
-
           onPress: async () => {
+            try {
+              setLoggingOut(true);
 
-            await AsyncStorage.removeItem(
-              'hospitalLoggedIn'
-            );
+              await AsyncStorage.multiRemove([
+                'hospitalLoggedIn',
+                'currentHospital',
+              ]);
 
-            await AsyncStorage.removeItem(
-              'currentHospital'
-            );
+              router.replace('/role-section');
+            } catch (error) {
+              console.log('LOGOUT ERROR:', error);
 
-            router.replace('/role-section');
-
+              Alert.alert(
+                'Logout Error',
+                'Unable to logout. Please try again.'
+              );
+            } finally {
+              setLoggingOut(false);
+            }
           },
         },
       ]
     );
-
   };
 
-  const handleRequestReactivation =
-    async () => {
+  // REQUEST REACTIVATION
+  const handleRequestReactivation = async () => {
+    if (!hospital?.id) {
+      Alert.alert(
+        'Error',
+        'Hospital information not found.'
+      );
+      return;
+    }
 
-      if (!hospital?.id) {
+    if (requestingReactivation) return;
 
-        Alert.alert(
-          'Error',
-          'Hospital information not found.'
-        );
+    if (isReactivationPending) {
+      Alert.alert(
+        'Request Pending',
+        'Your reactivation request is already pending with Admin.'
+      );
+      return;
+    }
 
-        return;
+    try {
+      setRequestingReactivation(true);
 
-      }
-
-      try {
-
-        const response = await fetch(
-  `https:// 'https://qcare-backend-o8za.onrender.com';
-/hospital-request-reactivation/${hospital.id}`,
-  {
-    method: 'PUT',
-  }
-);
-
-        const data =
-          await response.json();
-
-        if (!data.success) {
-
-          Alert.alert(
-            'Request Failed',
-            data.message ||
-              'Unable to send reactivation request.'
-          );
-
-          return;
-
+      const response = await fetch(
+        `${API_URL}/hospital-request-reactivation/${hospital.id}`,
+        {
+          method: 'PUT',
         }
+      );
 
+      const data = await readResponse(response);
+
+      if (!response.ok || !data.success) {
         Alert.alert(
-          'Request Sent',
-          'Your reactivation request has been sent to the Admin.'
+          'Request Failed',
+          data.message ||
+            'Unable to send reactivation request.'
         );
-
-      } catch (error) {
-
-        console.log(
-          'REACTIVATION REQUEST ERROR:',
-          error
-        );
-
-        Alert.alert(
-          'Connection Error',
-          'Unable to connect to QCare server.'
-        );
-
+        return;
       }
 
-    };
+      const updatedHospital: HospitalData = {
+        ...hospital,
+        reactivation_status: 'Pending',
+      };
 
+      setHospital(updatedHospital);
+
+      await AsyncStorage.setItem(
+        'currentHospital',
+        JSON.stringify(updatedHospital)
+      );
+
+      Alert.alert(
+        'Request Sent',
+        'Your reactivation request has been sent to the Admin.'
+      );
+    } catch (error) {
+      console.log('REACTIVATION REQUEST ERROR:', error);
+
+      Alert.alert(
+        'Connection Error',
+        'Unable to connect to QCare server.'
+      );
+    } finally {
+      setRequestingReactivation(false);
+    }
+  };
+
+  // LOADING SCREEN
   if (checkingSession) {
-
     return (
       <View style={styles.loadingScreen}>
-
         <ActivityIndicator
           size="large"
           color="#2563EB"
@@ -297,53 +364,34 @@ export default function HospitalDashboardScreen() {
         <Text style={styles.loadingText}>
           Loading dashboard...
         </Text>
-
       </View>
     );
-
   }
 
   const hospitalName =
     hospital?.name || 'Hospital';
 
   const hospitalInitial =
-    hospitalName
-      .trim()
-      .charAt(0)
-      .toUpperCase() || 'H';
+    hospitalName.trim().charAt(0).toUpperCase() || 'H';
 
   const hospitalStatus =
     hospital?.status || 'Active';
 
-  const isActive =
-    hospitalStatus === 'Active';
-
   return (
-
     <View style={styles.screen}>
-
       <ScrollView
         style={styles.container}
-        contentContainerStyle={
-          styles.contentContainer
-        }
+        contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
           />
-        }
-      >
-
-        {/* ================================= */}
+      }>
         {/* HEADER */}
-        {/* ================================= */}
-
         <View style={styles.header}>
-
           <View style={styles.headerLeft}>
-
             <Text style={styles.greeting}>
               Welcome back
             </Text>
@@ -354,165 +402,119 @@ export default function HospitalDashboardScreen() {
             >
               {hospitalName}
             </Text>
-
           </View>
 
           <TouchableOpacity
             style={styles.profileCircle}
-            onPress={() =>
-              router.push(
-                '/hospital-profile'
-              )
-            }
+            onPress={() => router.push('/hospital-profile')}
             activeOpacity={0.8}
           >
-
             <Text style={styles.profileText}>
               {hospitalInitial}
             </Text>
-
           </TouchableOpacity>
-
         </View>
 
-        {/* ================================= */}
         {/* STATUS */}
-        {/* ================================= */}
-
         <View
           style={[
             styles.statusCard,
-            !isActive &&
-              styles.inactiveStatusCard,
+            !isActive && styles.inactiveStatusCard,
           ]}
         >
-
           <View
             style={[
               styles.statusIcon,
-              !isActive &&
-                styles.inactiveStatusIcon,
+              !isActive && styles.inactiveStatusIcon,
             ]}
           >
-
-            <Text style={styles.statusIconText}>
-              +
-            </Text>
-
+            <Text style={styles.statusIconText}>+</Text>
           </View>
 
           <View style={styles.statusContent}>
-
             <Text style={styles.statusTitle}>
               Hospital Account
             </Text>
 
             <View style={styles.statusRow}>
-
               <View
                 style={[
                   styles.statusDot,
-                  !isActive &&
-                    styles.inactiveDot,
+                  !isActive && styles.inactiveDot,
                 ]}
               />
 
               <Text
                 style={[
                   styles.statusText,
-                  !isActive &&
-                    styles.inactiveStatusText,
+                  !isActive && styles.inactiveStatusText,
                 ]}
               >
                 {hospitalStatus}
               </Text>
-
             </View>
 
-            {hospitalStatus.trim().toLowerCase() === 'deactivated' && (
-
-              <TouchableOpacity
-                style={
-                  styles.reactivationButton
-                }
-                onPress={
-                  handleRequestReactivation
-                }
-                activeOpacity={0.85}
-              >
-
-                <Text
-                  style={
-                    styles.reactivationButtonText
-                  }
-                >
-                  Request Reactivation
-                </Text>
-
-              </TouchableOpacity>
-
+            {isDeactivated && (
+              <>
+                {isReactivationPending ? (
+                  <Text style={styles.pendingText}>
+                    Reactivation Request Pending
+                  </Text>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.reactivationButton,
+                      requestingReactivation &&
+                        styles.disabledButton,
+                    ]}
+                    onPress={handleRequestReactivation}
+                    disabled={requestingReactivation}
+                    activeOpacity={0.85}
+                  >
+                    {requestingReactivation ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.reactivationButtonText}>
+                        Request Reactivation
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
             )}
-
           </View>
 
           <TouchableOpacity
-            onPress={() =>
-              router.push(
-                '/hospital-profile'
-              )
-            }
+            onPress={() => router.push('/hospital-profile')}
           >
-
-            <Text style={styles.viewText}>
-              View
-            </Text>
-
+            <Text style={styles.viewText}>View</Text>
           </TouchableOpacity>
-
         </View>
 
-        {/* ================================= */}
         {/* WELCOME BANNER */}
-        {/* ================================= */}
-
         <View style={styles.heroCard}>
-
           <View style={styles.heroContent}>
-
             <Text style={styles.heroEyebrow}>
               QCARE HOSPITAL
             </Text>
 
             <Text style={styles.heroTitle}>
-              Manage your hospital
-              efficiently.
+              Manage your hospital efficiently.
             </Text>
 
             <Text style={styles.heroDescription}>
-              Patients, appointments and
-              live queues — all in one place.
+              Patients, appointments and live queues — all in one place.
             </Text>
-
           </View>
 
           <View style={styles.heroDecoration}>
-
-            <Text style={styles.heroPlus}>
-              +
-            </Text>
-
+            <Text style={styles.heroPlus}>+</Text>
           </View>
-
         </View>
 
-        {/* ================================= */}
         {/* TODAY'S OVERVIEW */}
-        {/* ================================= */}
-
         <View style={styles.sectionHeader}>
-
           <View>
-
             <Text style={styles.sectionTitle}>
               Today's Overview
             </Text>
@@ -520,408 +522,256 @@ export default function HospitalDashboardScreen() {
             <Text style={styles.sectionSubtitle}>
               Live hospital activity
             </Text>
-
           </View>
-
         </View>
 
         <View style={styles.statsGrid}>
-
-          {/* PATIENTS */}
-
           <View style={styles.statCard}>
-
-            <View
-              style={[
-                styles.statIcon,
-                styles.blueIcon,
-              ]}
-            >
-
-              <Text style={styles.statIconText}>
-                P
-              </Text>
-
+            <View style={[styles.statIcon, styles.blueIcon]}>
+              <Text style={styles.statIconText}>P</Text>
             </View>
 
             <Text style={styles.statNumber}>
               {stats.patients}
             </Text>
 
-            <Text style={styles.statLabel}>
-              Patients
-            </Text>
-
+            <Text style={styles.statLabel}>Patients</Text>
           </View>
 
-          {/* WAITING */}
-
           <View style={styles.statCard}>
-
-            <View
-              style={[
-                styles.statIcon,
-                styles.orangeIcon,
-              ]}
-            >
-
-              <Text style={styles.statIconText}>
-                W
-              </Text>
-
+            <View style={[styles.statIcon, styles.orangeIcon]}>
+              <Text style={styles.statIconText}>W</Text>
             </View>
 
             <Text style={styles.statNumber}>
               {stats.waiting}
             </Text>
 
-            <Text style={styles.statLabel}>
-              Waiting
-            </Text>
-
+            <Text style={styles.statLabel}>Waiting</Text>
           </View>
 
-          {/* COMPLETED */}
-
           <View style={styles.statCard}>
-
-            <View
-              style={[
-                styles.statIcon,
-                styles.greenIcon,
-              ]}
-            >
-
-              <Text style={styles.statIconText}>
-                ✓
-              </Text>
-
+            <View style={[styles.statIcon, styles.greenIcon]}>
+              <Text style={styles.statIconText}>✓</Text>
             </View>
 
             <Text style={styles.statNumber}>
               {stats.completed}
             </Text>
 
-            <Text style={styles.statLabel}>
-              Completed
-            </Text>
-
+            <Text style={styles.statLabel}>Completed</Text>
           </View>
 
-          {/* APPOINTMENTS */}
-
           <View style={styles.statCard}>
-
-            <View
-              style={[
-                styles.statIcon,
-                styles.purpleIcon,
-              ]}
-            >
-
-              <Text style={styles.statIconText}>
-                A
-              </Text>
-
+            <View style={[styles.statIcon, styles.purpleIcon]}>
+              <Text style={styles.statIconText}>A</Text>
             </View>
 
             <Text style={styles.statNumber}>
               {stats.appointments}
             </Text>
 
-            <Text style={styles.statLabel}>
-              Appointments
-            </Text>
-
+            <Text style={styles.statLabel}>Appointments</Text>
           </View>
-
         </View>
 
-        {/* ================================= */}
         {/* QUICK ACTION */}
-        {/* ================================= */}
-
         <Text style={styles.sectionTitle}>
           Quick Action
         </Text>
 
         <TouchableOpacity
-          style={styles.addPatientCard}
-          onPress={() =>
-            router.push('/add-patient')
-          }
+          style={[
+            styles.addPatientCard,
+            !isActive && styles.disabledActionCard,
+          ]}
+          onPress={() => router.push('/add-patient')}
+          disabled={!isActive}
           activeOpacity={0.85}
         >
-
           <View style={styles.addPatientIcon}>
-
-            <Text style={styles.addPatientPlus}>
-              +
-            </Text>
-
+            <Text style={styles.addPatientPlus}>+</Text>
           </View>
 
           <View style={styles.addPatientContent}>
-
             <Text style={styles.addPatientTitle}>
               Add New Patient
             </Text>
 
-            <Text
-              style={styles.addPatientDescription}
-            >
-              Register a patient and generate
-              a queue token.
+            <Text style={styles.addPatientDescription}>
+              Register a patient and generate a queue token.
             </Text>
 
+            {!isActive && (
+              <Text style={styles.disabledActionText}>
+                Available only for active hospitals
+              </Text>
+            )}
           </View>
 
-          <Text style={styles.arrow}>
-            ›
-          </Text>
-
+          <Text style={styles.arrow}>›</Text>
         </TouchableOpacity>
 
-        {/* ================================= */}
         {/* MANAGEMENT */}
-        {/* ================================= */}
-
         <Text style={styles.sectionTitle}>
           Hospital Management
         </Text>
 
         {/* QUEUE */}
-
         <TouchableOpacity
-          style={styles.managementCard}
-          onPress={() =>
-            router.push('/hospital-queue')
-          }
+          style={[
+            styles.managementCard,
+            !isActive && styles.disabledManagementCard,
+          ]}
+          onPress={() => router.push('/hospital-queue')}
+          disabled={!isActive}
           activeOpacity={0.8}
         >
-
-          <View
-            style={[
-              styles.managementIcon,
-              styles.queueIcon,
-            ]}
-          >
-
-            <Text style={styles.managementIconText}>
-              Q
-            </Text>
-
+          <View style={[styles.managementIcon, styles.queueIcon]}>
+            <Text style={styles.managementIconText}>Q</Text>
           </View>
 
           <View style={styles.managementContent}>
-
             <Text style={styles.managementTitle}>
               Patient & Queue
             </Text>
 
-            <Text
-              style={styles.managementDescription}
-            >
-              Manage patients, tokens and
-              live queues.
+            <Text style={styles.managementDescription}>
+              Manage patients, tokens and live queues.
             </Text>
-
           </View>
 
-          <Text style={styles.managementArrow}>
-            ›
-          </Text>
-
+          <Text style={styles.managementArrow}>›</Text>
         </TouchableOpacity>
 
         {/* APPOINTMENTS */}
-
         <TouchableOpacity
-          style={styles.managementCard}
-          onPress={() =>
-            router.push(
-              '/hospital-appointments'
-            )
-          }
+          style={[
+            styles.managementCard,
+            !isActive && styles.disabledManagementCard,
+          ]}
+          onPress={() => router.push('/hospital-appointments')}
+          disabled={!isActive}
           activeOpacity={0.8}
         >
-
-          <View
-            style={[
-              styles.managementIcon,
-              styles.appointmentIcon,
-            ]}
-          >
-
-            <Text style={styles.managementIconText}>
-              A
-            </Text>
-
+          <View style={[styles.managementIcon, styles.appointmentIcon]}>
+            <Text style={styles.managementIconText}>A</Text>
           </View>
 
           <View style={styles.managementContent}>
-
             <Text style={styles.managementTitle}>
               Appointments
             </Text>
 
-            <Text
-              style={styles.managementDescription}
-            >
-              View and manage patient
-              appointments.
+            <Text style={styles.managementDescription}>
+              View and manage patient appointments.
             </Text>
-
           </View>
 
-          <Text style={styles.managementArrow}>
-            ›
-          </Text>
-
+          <Text style={styles.managementArrow}>›</Text>
         </TouchableOpacity>
 
         {/* NOTIFICATIONS */}
-
         <TouchableOpacity
           style={styles.managementCard}
-          onPress={() =>
-            router.push(
-              '/hospital-notifications'
-            )
-          }
+          onPress={() => router.push('/hospital-notifications')}
           activeOpacity={0.8}
         >
-
-          <View
-            style={[
-              styles.managementIcon,
-              styles.notificationIcon,
-            ]}
-          >
-
-            <Text style={styles.managementIconText}>
-              N
-            </Text>
-
+          <View style={[styles.managementIcon, styles.notificationIcon]}>
+            <Text style={styles.managementIconText}>N</Text>
           </View>
 
           <View style={styles.managementContent}>
-
             <Text style={styles.managementTitle}>
               Notifications
             </Text>
 
-            <Text
-              style={styles.managementDescription}
-            >
-              View hospital alerts and
-              important updates.
+            <Text style={styles.managementDescription}>
+              View hospital alerts and important updates.
             </Text>
-
           </View>
 
           {unreadNotifications > 0 && (
-
             <View style={styles.notificationBadge}>
-
               <Text style={styles.notificationBadgeText}>
                 {unreadNotifications > 99
                   ? '99+'
                   : unreadNotifications}
               </Text>
-
             </View>
-
           )}
 
-          <Text style={styles.managementArrow}>
-            ›
-          </Text>
-
+          <Text style={styles.managementArrow}>›</Text>
         </TouchableOpacity>
 
-        {/* ================================= */}
         {/* LOGOUT */}
-        {/* ================================= */}
-
         <TouchableOpacity
           style={styles.logoutButton}
           onPress={handleLogout}
+          disabled={loggingOut}
           activeOpacity={0.8}
         >
-
-          <Text style={styles.logoutText}>
-            Log Out
-          </Text>
-
+          {loggingOut ? (
+            <ActivityIndicator color="#DC2626" />
+          ) : (
+            <Text style={styles.logoutText}>Log Out</Text>
+          )}
         </TouchableOpacity>
 
         <Text style={styles.footer}>
           QCare • Smart Hospital Queue Management
         </Text>
-
       </ScrollView>
-
     </View>
   );
 }
 const styles = StyleSheet.create({
-
   screen: {
     flex: 1,
     backgroundColor: '#F5F7FB',
   },
-
   container: {
     flex: 1,
   },
-
   contentContainer: {
     paddingHorizontal: 20,
     paddingTop: 52,
     paddingBottom: 45,
   },
-
   loadingScreen: {
     flex: 1,
     backgroundColor: '#F5F7FB',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   loadingText: {
     marginTop: 12,
     color: '#64748B',
     fontSize: 13,
   },
 
-  /* HEADER */
-
+  // HEADER
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 22,
   },
-
   headerLeft: {
     flex: 1,
     paddingRight: 15,
   },
-
   greeting: {
     fontSize: 13,
     color: '#64748B',
     fontWeight: '600',
     marginBottom: 5,
   },
-
   hospitalName: {
     fontSize: 24,
     fontWeight: '900',
     color: '#0F172A',
   },
-
   profileCircle: {
     width: 50,
     height: 50,
@@ -932,21 +782,16 @@ const styles = StyleSheet.create({
     shadowColor: '#2563EB',
     shadowOpacity: 0.25,
     shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-
   profileText: {
     color: '#FFFFFF',
     fontSize: 19,
     fontWeight: '900',
   },
 
-  /* STATUS */
-
+  // STATUS
   statusCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -957,11 +802,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-
   inactiveStatusCard: {
     borderColor: '#FECACA',
   },
-
   statusIcon: {
     width: 45,
     height: 45,
@@ -971,33 +814,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   inactiveStatusIcon: {
     backgroundColor: '#FEF2F2',
   },
-
   statusIconText: {
     color: '#2563EB',
     fontSize: 25,
     fontWeight: '800',
   },
-
   statusContent: {
     flex: 1,
   },
-
   statusTitle: {
     fontSize: 12,
     color: '#64748B',
     fontWeight: '700',
     marginBottom: 4,
   },
-
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   statusDot: {
     width: 8,
     height: 8,
@@ -1005,21 +842,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#16A34A',
     marginRight: 6,
   },
-
   inactiveDot: {
     backgroundColor: '#DC2626',
   },
-
   statusText: {
     color: '#15803D',
     fontSize: 13,
     fontWeight: '800',
   },
-
   inactiveStatusText: {
     color: '#DC2626',
   },
-
   reactivationButton: {
     marginTop: 12,
     backgroundColor: '#2563EB',
@@ -1029,21 +862,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
   },
-
   reactivationButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
-
+  disabledButton: {
+    opacity: 0.6,
+  },
+  pendingText: {
+    color: '#D97706',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 10,
+  },
   viewText: {
     color: '#2563EB',
     fontSize: 12,
     fontWeight: '800',
   },
 
-  /* HERO */
-
+  // HERO
   heroCard: {
     backgroundColor: '#2563EB',
     borderRadius: 22,
@@ -1053,12 +892,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flexDirection: 'row',
   },
-
   heroContent: {
     flex: 1,
     paddingRight: 10,
   },
-
   heroEyebrow: {
     color: '#BFDBFE',
     fontSize: 10,
@@ -1066,21 +903,18 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     marginBottom: 8,
   },
-
   heroTitle: {
     color: '#FFFFFF',
     fontSize: 22,
     lineHeight: 28,
     fontWeight: '900',
   },
-
   heroDescription: {
     color: '#DBEAFE',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 7,
   },
-
   heroDecoration: {
     width: 62,
     height: 62,
@@ -1090,26 +924,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
   },
-
   heroPlus: {
     color: '#FFFFFF',
     fontSize: 38,
     fontWeight: '300',
   },
 
-  /* SECTION */
-
+  // SECTION
   sectionHeader: {
     marginBottom: 13,
   },
-
   sectionTitle: {
     fontSize: 17,
     fontWeight: '900',
     color: '#0F172A',
     marginBottom: 13,
   },
-
   sectionSubtitle: {
     fontSize: 12,
     color: '#94A3B8',
@@ -1117,15 +947,13 @@ const styles = StyleSheet.create({
     marginBottom: 13,
   },
 
-  /* STATS */
-
+  // STATS
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 25,
   },
-
   statCard: {
     width: '48.3%',
     backgroundColor: '#FFFFFF',
@@ -1135,7 +963,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-
   statIcon: {
     width: 34,
     height: 34,
@@ -1144,35 +971,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 10,
   },
-
   blueIcon: {
     backgroundColor: '#EFF6FF',
   },
-
   orangeIcon: {
     backgroundColor: '#FFF7ED',
   },
-
   greenIcon: {
     backgroundColor: '#F0FDF4',
   },
-
   purpleIcon: {
     backgroundColor: '#F5F3FF',
   },
-
   statIconText: {
     fontSize: 13,
     fontWeight: '900',
     color: '#2563EB',
   },
-
   statNumber: {
     fontSize: 25,
     fontWeight: '900',
     color: '#0F172A',
   },
-
   statLabel: {
     fontSize: 11,
     color: '#64748B',
@@ -1180,8 +1000,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* ADD PATIENT */
-
+  // ADD PATIENT
   addPatientCard: {
     backgroundColor: '#2563EB',
     borderRadius: 18,
@@ -1190,7 +1009,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 25,
   },
-
+  disabledActionCard: {
+    backgroundColor: '#94A3B8',
+    opacity: 0.7,
+  },
   addPatientIcon: {
     width: 48,
     height: 48,
@@ -1200,30 +1022,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 13,
   },
-
   addPatientPlus: {
     color: '#2563EB',
     fontSize: 29,
     fontWeight: '500',
   },
-
   addPatientContent: {
     flex: 1,
   },
-
   addPatientTitle: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '900',
     marginBottom: 4,
   },
-
   addPatientDescription: {
     color: '#DBEAFE',
     fontSize: 11,
     lineHeight: 17,
   },
-
+  disabledActionText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    marginTop: 5,
+    fontWeight: '700',
+  },
   arrow: {
     color: '#FFFFFF',
     fontSize: 28,
@@ -1231,8 +1054,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  /* MANAGEMENT */
-
+  // MANAGEMENT
   managementCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -1243,7 +1065,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-
+  disabledManagementCard: {
+    opacity: 0.45,
+  },
   managementIcon: {
     width: 48,
     height: 48,
@@ -1252,19 +1076,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 13,
   },
-
   queueIcon: {
     backgroundColor: '#EFF6FF',
   },
-
   appointmentIcon: {
     backgroundColor: '#F5F3FF',
   },
-
   notificationIcon: {
     backgroundColor: '#FFF7ED',
   },
-
   notificationBadge: {
     minWidth: 24,
     height: 24,
@@ -1275,36 +1095,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     marginRight: 8,
   },
-
   notificationBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '900',
   },
-
   managementIconText: {
     color: '#2563EB',
     fontSize: 16,
     fontWeight: '900',
   },
-
   managementContent: {
     flex: 1,
   },
-
   managementTitle: {
     color: '#0F172A',
     fontSize: 14,
     fontWeight: '900',
     marginBottom: 4,
   },
-
   managementDescription: {
     color: '#64748B',
     fontSize: 11,
     lineHeight: 17,
   },
-
   managementArrow: {
     color: '#94A3B8',
     fontSize: 25,
@@ -1312,8 +1126,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  /* LOGOUT */
-
+  // LOGOUT
   logoutButton: {
     height: 50,
     borderRadius: 15,
@@ -1324,15 +1137,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 14,
   },
-
   logoutText: {
     color: '#DC2626',
     fontSize: 14,
     fontWeight: '800',
   },
 
-  /* FOOTER */
-
+  // FOOTER
   footer: {
     textAlign: 'center',
     color: '#94A3B8',

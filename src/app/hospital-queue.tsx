@@ -1,20 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 type QueuePatient = {
   id: number;
@@ -40,61 +39,67 @@ export default function HospitalQueueScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [callingPatient, setCallingPatient] =
-    useState(false);
+  const [callingPatient, setCallingPatient] = useState(false);
+  const [completingPatient, setCompletingPatient] = useState(false);
 
-  const [completingPatient, setCompletingPatient] =
-    useState(false);
+  const [hospitalName, setHospitalName] = useState('Hospital');
+  const [selectedDoctor, setSelectedDoctor] = useState('All Doctors');
 
-  const [hospitalName, setHospitalName] =
-    useState('Hospital');
+  // SAFE RESPONSE PARSER
+  const readResponse = async (response: Response) => {
+    const text = await response.text();
 
-  const [selectedDoctor, setSelectedDoctor] =
-    useState('All Doctors');
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return { message: text };
+    }
+  };
 
   // LOAD QUEUE
-  const loadQueue = async () => {
+  const loadQueue = useCallback(async () => {
     try {
-      const loggedIn =
-        await AsyncStorage.getItem('hospitalLoggedIn');
+      const loggedIn = await AsyncStorage.getItem('hospitalLoggedIn');
+      const hospitalDataString = await AsyncStorage.getItem('currentHospital');
 
-      const hospitalDataString =
-        await AsyncStorage.getItem('currentHospital');
-
-      if (
-        loggedIn !== 'true' ||
-        !hospitalDataString
-      ) {
+      if (loggedIn !== 'true' || !hospitalDataString) {
         router.replace('/hospital-login');
         return;
       }
 
-      const hospitalData =
-        JSON.parse(hospitalDataString);
+      const hospitalData = JSON.parse(hospitalDataString);
 
-      setHospitalName(
-        hospitalData.name || 'Hospital'
-      );
+      if (!hospitalData?.id) {
+        Alert.alert('Error', 'Hospital information not found.');
+        return;
+      }
+
+      setHospitalName(hospitalData.name || 'Hospital');
 
       const response = await fetch(
         `${API_URL}/live-queue/${hospitalData.id}`
       );
 
-      const data = await response.json();
+      const data = await readResponse(response);
 
-      if (data.success) {
-        setQueue(data.queue || []);
-      } else {
+      if (!response.ok || data.success === false) {
         Alert.alert(
           'Unable to Load Queue',
           data.message || 'Unable to load queue.'
         );
+        return;
       }
+
+      // Supports both array response and { success, queue } response
+      const queueData = Array.isArray(data)
+        ? data
+        : Array.isArray(data.queue)
+        ? data.queue
+        : [];
+
+      setQueue(queueData);
     } catch (error) {
-      console.log(
-        'LOAD QUEUE ERROR:',
-        error
-      );
+      console.log('LOAD QUEUE ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -104,22 +109,24 @@ export default function HospitalQueueScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadQueue();
-  }, []);
+  }, [loadQueue]);
 
   // REFRESH
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    if (refreshing) return;
+
     setRefreshing(true);
-    loadQueue();
+    await loadQueue();
   };
 
   // CALL NEXT PATIENT
-  const handleCallNext = async (
-    patient: QueuePatient
-  ) => {
+  const handleCallNext = async (patient: QueuePatient) => {
+    if (callingPatient || completingPatient) return;
+
     try {
       setCallingPatient(true);
 
@@ -137,26 +144,23 @@ export default function HospitalQueueScreen() {
         }
       );
 
-      const data = await response.json();
+      const data = await readResponse(response);
 
-      if (data.success) {
+      if (response.ok && data.success) {
         Alert.alert(
           'Patient Called',
-          data.message
+          data.message || 'Patient called successfully.'
         );
 
         await loadQueue();
       } else {
         Alert.alert(
           'Unable to Call',
-          data.message
+          data.message || 'Unable to call next patient.'
         );
       }
     } catch (error) {
-      console.log(
-        'CALL NEXT ERROR:',
-        error
-      );
+      console.log('CALL NEXT ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -168,9 +172,9 @@ export default function HospitalQueueScreen() {
   };
 
   // COMPLETE CONSULTATION
-  const handleCompleteConsultation = async (
-    patient: QueuePatient
-  ) => {
+  const handleCompleteConsultation = async (patient: QueuePatient) => {
+    if (completingPatient || callingPatient) return;
+
     try {
       setCompletingPatient(true);
 
@@ -188,26 +192,23 @@ export default function HospitalQueueScreen() {
         }
       );
 
-      const data = await response.json();
+      const data = await readResponse(response);
 
-      if (data.success) {
+      if (response.ok && data.success) {
         Alert.alert(
           'Consultation Completed',
-          data.message
+          data.message || 'Consultation completed successfully.'
         );
 
         await loadQueue();
       } else {
         Alert.alert(
           'Unable to Complete',
-          data.message
+          data.message || 'Unable to complete consultation.'
         );
       }
     } catch (error) {
-      console.log(
-        'COMPLETE CONSULTATION ERROR:',
-        error
-      );
+      console.log('COMPLETE CONSULTATION ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -222,39 +223,27 @@ export default function HospitalQueueScreen() {
   const filteredQueue =
     selectedDoctor === 'All Doctors'
       ? queue
-      : queue.filter(
-          (patient) =>
-            patient.doctor === selectedDoctor
-        );
+      : queue.filter((patient) => patient.doctor === selectedDoctor);
 
   // COUNTS
-  const waitingCount =
-    filteredQueue.filter(
-      (patient) =>
-        patient.status === 'Waiting'
-    ).length;
+  const waitingCount = filteredQueue.filter(
+    (patient) => patient.status === 'Waiting'
+  ).length;
 
-  const consultationCount =
-    filteredQueue.filter(
-      (patient) =>
-        patient.status === 'In Consultation'
-    ).length;
+  const consultationCount = filteredQueue.filter(
+    (patient) => patient.status === 'In Consultation'
+  ).length;
 
-  const completedCount =
-    filteredQueue.filter(
-      (patient) =>
-        patient.status === 'Completed'
-    ).length;
+  const completedCount = filteredQueue.filter(
+    (patient) => patient.status === 'Completed'
+  ).length;
 
   // LOADING SCREEN
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingCard}>
-          <ActivityIndicator
-            size="large"
-            color="#2563EB"
-          />
+          <ActivityIndicator size="large" color="#2563EB" />
 
           <Text style={styles.loadingText}>
             Loading hospital queue...
@@ -267,9 +256,7 @@ export default function HospitalQueueScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={
-          styles.scrollContent
-        }
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -279,19 +266,12 @@ export default function HospitalQueueScreen() {
           />
         }
       >
-
         {/* HEADER */}
-
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.headerSmall}>
-              HOSPITAL QUEUE
-            </Text>
+            <Text style={styles.headerSmall}>HOSPITAL QUEUE</Text>
 
-            <Text
-              style={styles.headerTitle}
-              numberOfLines={1}
-            >
+            <Text style={styles.headerTitle} numberOfLines={1}>
               {hospitalName}
             </Text>
           </View>
@@ -301,23 +281,15 @@ export default function HospitalQueueScreen() {
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
-            <Text style={styles.backArrow}>
-              ‹
-            </Text>
-
-            <Text style={styles.backButtonText}>
-              Back
-            </Text>
+            <Text style={styles.backArrow}>‹</Text>
+            <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
         </View>
 
         {/* MAIN INTRO */}
-
         <View style={styles.introSection}>
           <View style={styles.introIcon}>
-            <Text style={styles.introIconText}>
-              Q
-            </Text>
+            <Text style={styles.introIconText}>Q</Text>
           </View>
 
           <View style={styles.introTextArea}>
@@ -326,53 +298,39 @@ export default function HospitalQueueScreen() {
             </Text>
 
             <Text style={styles.pageSubtitle}>
-              Manage today's patients and
-              doctor-wise queues
+              Manage today's patients and doctor-wise queues
             </Text>
           </View>
         </View>
 
         {/* DOCTOR FILTER */}
-
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Doctor-wise Queue
-          </Text>
-
-          <Text style={styles.sectionHint}>
-            Filter
-          </Text>
+          <Text style={styles.sectionTitle}>Doctor-wise Queue</Text>
+          <Text style={styles.sectionHint}>Filter</Text>
         </View>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={
-            styles.doctorFilterContainer
-          }
+          contentContainerStyle={styles.doctorFilterContainer}
         >
           {doctors.map((doctor) => {
-            const isSelected =
-              selectedDoctor === doctor;
+            const isSelected = selectedDoctor === doctor;
 
             return (
               <TouchableOpacity
                 key={doctor}
                 style={[
                   styles.doctorFilter,
-                  isSelected &&
-                    styles.doctorFilterSelected,
+                  isSelected && styles.doctorFilterSelected,
                 ]}
-                onPress={() =>
-                  setSelectedDoctor(doctor)
-                }
+                onPress={() => setSelectedDoctor(doctor)}
                 activeOpacity={0.8}
               >
                 <Text
                   style={[
                     styles.doctorFilterText,
-                    isSelected &&
-                      styles.doctorFilterTextSelected,
+                    isSelected && styles.doctorFilterTextSelected,
                   ]}
                 >
                   {doctor}
@@ -383,13 +341,10 @@ export default function HospitalQueueScreen() {
         </ScrollView>
 
         {/* SUMMARY */}
-
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
             <View>
-              <Text style={styles.summaryTitle}>
-                Queue Overview
-              </Text>
+              <Text style={styles.summaryTitle}>Queue Overview</Text>
 
               <Text style={styles.summarySubtitle}>
                 Current status of today's queue
@@ -398,88 +353,55 @@ export default function HospitalQueueScreen() {
 
             <View style={styles.liveBadge}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>
-                LIVE
-              </Text>
+              <Text style={styles.liveText}>LIVE</Text>
             </View>
           </View>
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.totalNumber,
-                ]}
-              >
+              <Text style={[styles.summaryNumber, styles.totalNumber]}>
                 {filteredQueue.length}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Total
-              </Text>
+              <Text style={styles.summaryLabel}>Total</Text>
             </View>
 
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.waitingNumber,
-                ]}
-              >
+              <Text style={[styles.summaryNumber, styles.waitingNumber]}>
                 {waitingCount}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Waiting
-              </Text>
+              <Text style={styles.summaryLabel}>Waiting</Text>
             </View>
 
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryItem}>
               <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.consultationNumber,
-                ]}
+                style={[styles.summaryNumber, styles.consultationNumber]}
               >
                 {consultationCount}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Consulting
-              </Text>
+              <Text style={styles.summaryLabel}>Consulting</Text>
             </View>
 
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryItem}>
               <Text
-                style={[
-                  styles.summaryNumber,
-                  styles.completedNumber,
-                ]}
+                style={[styles.summaryNumber, styles.completedNumber]}
               >
                 {completedCount}
               </Text>
-
-              <Text style={styles.summaryLabel}>
-                Completed
-              </Text>
+              <Text style={styles.summaryLabel}>Completed</Text>
             </View>
           </View>
         </View>
 
         {/* QUEUE HEADER */}
-
         <View style={styles.queueHeader}>
           <View>
-            <Text style={styles.queueTitle}>
-              Today's Queue
-            </Text>
+            <Text style={styles.queueTitle}>Today's Queue</Text>
 
             <Text style={styles.queueSubtitle}>
               Patients currently in the system
@@ -487,26 +409,19 @@ export default function HospitalQueueScreen() {
           </View>
 
           <View style={styles.queueCountBadge}>
-            <Text style={styles.queueCount}>
-              {filteredQueue.length}
-            </Text>
+            <Text style={styles.queueCount}>{filteredQueue.length}</Text>
 
             <Text style={styles.queueCountLabel}>
-              {filteredQueue.length === 1
-                ? 'Patient'
-                : 'Patients'}
+              {filteredQueue.length === 1 ? 'Patient' : 'Patients'}
             </Text>
           </View>
         </View>
 
         {/* EMPTY QUEUE */}
-
         {filteredQueue.length === 0 && (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconCircle}>
-              <Text style={styles.emptyIcon}>
-                ✓
-              </Text>
+              <Text style={styles.emptyIcon}>✓</Text>
             </View>
 
             <Text style={styles.emptyTitle}>
@@ -514,68 +429,47 @@ export default function HospitalQueueScreen() {
             </Text>
 
             <Text style={styles.emptyText}>
-              There are currently no patients
-              for the selected doctor.
+              There are currently no patients for the selected doctor.
             </Text>
           </View>
         )}
 
         {/* PATIENT CARDS */}
-
         {filteredQueue.map((patient) => (
-          <View
-            key={patient.id}
-            style={styles.patientCard}
-          >
-
+          <View key={patient.id} style={styles.patientCard}>
             {/* PATIENT TOP */}
-
             <View style={styles.patientTop}>
               <View style={styles.tokenContainer}>
-                <Text style={styles.tokenLabel}>
-                  TOKEN NUMBER
-                </Text>
-
-                <Text style={styles.tokenText}>
-                  {patient.token}
-                </Text>
+                <Text style={styles.tokenLabel}>TOKEN NUMBER</Text>
+                <Text style={styles.tokenText}>{patient.token}</Text>
               </View>
 
               <View
                 style={[
                   styles.statusBadge,
-                  patient.status === 'Waiting' &&
-                    styles.waitingBadge,
-                  patient.status ===
-                    'In Consultation' &&
+                  patient.status === 'Waiting' && styles.waitingBadge,
+                  patient.status === 'In Consultation' &&
                     styles.consultationBadge,
-                  patient.status === 'Completed' &&
-                    styles.completedBadge,
+                  patient.status === 'Completed' && styles.completedBadge,
                 ]}
               >
                 <View
                   style={[
                     styles.statusDot,
-                    patient.status === 'Waiting' &&
-                      styles.waitingDot,
-                    patient.status ===
-                      'In Consultation' &&
+                    patient.status === 'Waiting' && styles.waitingDot,
+                    patient.status === 'In Consultation' &&
                       styles.consultationDot,
-                    patient.status === 'Completed' &&
-                      styles.completedDot,
+                    patient.status === 'Completed' && styles.completedDot,
                   ]}
                 />
 
                 <Text
                   style={[
                     styles.statusText,
-                    patient.status === 'Waiting' &&
-                      styles.waitingText,
-                    patient.status ===
-                      'In Consultation' &&
+                    patient.status === 'Waiting' && styles.waitingText,
+                    patient.status === 'In Consultation' &&
                       styles.consultationText,
-                    patient.status === 'Completed' &&
-                      styles.completedText,
+                    patient.status === 'Completed' && styles.completedText,
                   ]}
                 >
                   {patient.status}
@@ -584,92 +478,57 @@ export default function HospitalQueueScreen() {
             </View>
 
             {/* PATIENT NAME */}
-
-            <Text style={styles.patientName}>
-              {patient.patient_name}
-            </Text>
+            <Text style={styles.patientName}>{patient.patient_name}</Text>
 
             {/* PATIENT DETAILS */}
-
             <View style={styles.patientDetails}>
               <View style={styles.detailBox}>
-                <Text style={styles.detailLabel}>
-                  DOCTOR
-                </Text>
+                <Text style={styles.detailLabel}>DOCTOR</Text>
 
-                <Text
-                  style={styles.detailValue}
-                  numberOfLines={1}
-                >
+                <Text style={styles.detailValue} numberOfLines={1}>
                   {patient.doctor}
                 </Text>
               </View>
 
               <View style={styles.detailBox}>
-                <Text style={styles.detailLabel}>
-                  PHONE
-                </Text>
-
-                <Text style={styles.detailValue}>
-                  {patient.phone}
-                </Text>
+                <Text style={styles.detailLabel}>PHONE</Text>
+                <Text style={styles.detailValue}>{patient.phone}</Text>
               </View>
             </View>
 
             {/* CALL NEXT */}
-
             {patient.status === 'Waiting' && (
               <TouchableOpacity
                 style={[
                   styles.callButton,
-                  callingPatient &&
-                    styles.disabledButton,
+                  callingPatient && styles.disabledButton,
                 ]}
-                onPress={() =>
-                  handleCallNext(patient)
-                }
+                onPress={() => handleCallNext(patient)}
                 disabled={callingPatient}
                 activeOpacity={0.85}
               >
-                <Text style={styles.callIcon}>
-                  →
-                </Text>
+                <Text style={styles.callIcon}>→</Text>
 
                 <Text style={styles.callButtonText}>
-                  {callingPatient
-                    ? 'Calling...'
-                    : 'Call Next Patient'}
+                  {callingPatient ? 'Calling...' : 'Call Next Patient'}
                 </Text>
               </TouchableOpacity>
             )}
 
             {/* COMPLETE CONSULTATION */}
-
-            {patient.status ===
-              'In Consultation' && (
+            {patient.status === 'In Consultation' && (
               <TouchableOpacity
                 style={[
                   styles.completeButton,
-                  completingPatient &&
-                    styles.disabledButton,
+                  completingPatient && styles.disabledButton,
                 ]}
-                onPress={() =>
-                  handleCompleteConsultation(
-                    patient
-                  )
-                }
+                onPress={() => handleCompleteConsultation(patient)}
                 disabled={completingPatient}
                 activeOpacity={0.85}
               >
-                <Text style={styles.completeIcon}>
-                  ✓
-                </Text>
+                <Text style={styles.completeIcon}>✓</Text>
 
-                <Text
-                  style={
-                    styles.completeButtonText
-                  }
-                >
+                <Text style={styles.completeButtonText}>
                   {completingPatient
                     ? 'Completing...'
                     : 'Complete Consultation'}
@@ -678,16 +537,9 @@ export default function HospitalQueueScreen() {
             )}
 
             {/* COMPLETED */}
-
             {patient.status === 'Completed' && (
-              <View
-                style={styles.completedMessage}
-              >
-                <Text
-                  style={
-                    styles.completedMessageText
-                  }
-                >
+              <View style={styles.completedMessage}>
+                <Text style={styles.completedMessageText}>
                   ✓ Consultation completed
                 </Text>
               </View>
@@ -698,7 +550,6 @@ export default function HospitalQueueScreen() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -710,7 +561,6 @@ const styles = StyleSheet.create({
   },
 
   // LOADING
-
   loadingContainer: {
     flex: 1,
     backgroundColor: '#F6F8FC',
@@ -731,7 +581,6 @@ const styles = StyleSheet.create({
   },
 
   // HEADER
-
   header: {
     backgroundColor: '#FFFFFF',
     paddingTop: 52,
@@ -788,7 +637,6 @@ const styles = StyleSheet.create({
   },
 
   // INTRO
-
   introSection: {
     marginHorizontal: 18,
     marginTop: 20,
@@ -843,7 +691,6 @@ const styles = StyleSheet.create({
   },
 
   // SECTION HEADER
-
   sectionHeader: {
     marginTop: 24,
     paddingHorizontal: 20,
@@ -865,7 +712,6 @@ const styles = StyleSheet.create({
   },
 
   // DOCTOR FILTER
-
   doctorFilterContainer: {
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -898,7 +744,6 @@ const styles = StyleSheet.create({
   },
 
   // SUMMARY
-
   summaryCard: {
     marginHorizontal: 18,
     marginTop: 18,
@@ -1004,7 +849,6 @@ const styles = StyleSheet.create({
   },
 
   // QUEUE HEADER
-
   queueHeader: {
     marginHorizontal: 20,
     marginTop: 25,
@@ -1048,7 +892,6 @@ const styles = StyleSheet.create({
   },
 
   // EMPTY
-
   emptyCard: {
     marginHorizontal: 18,
     backgroundColor: '#FFFFFF',
@@ -1092,7 +935,6 @@ const styles = StyleSheet.create({
   },
 
   // PATIENT CARD
-
   patientCard: {
     marginHorizontal: 18,
     marginBottom: 14,
@@ -1139,7 +981,6 @@ const styles = StyleSheet.create({
   },
 
   // STATUS
-
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1197,7 +1038,6 @@ const styles = StyleSheet.create({
   },
 
   // PATIENT
-
   patientName: {
     color: '#0F172A',
     fontSize: 18,
@@ -1235,7 +1075,6 @@ const styles = StyleSheet.create({
   },
 
   // BUTTONS
-
   callButton: {
     height: 48,
     width: '100%',
@@ -1289,7 +1128,6 @@ const styles = StyleSheet.create({
   },
 
   // COMPLETED
-
   completedMessage: {
     width: '100%',
     backgroundColor: '#F0FDF4',

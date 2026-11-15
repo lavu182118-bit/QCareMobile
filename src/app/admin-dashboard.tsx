@@ -35,6 +35,8 @@ export default function AdminDashboard() {
       const response = await fetch(`${API_URL}/admin/hospitals`);
       const data = await response.json();
 
+      console.log("ADMIN DATA:", data);
+
       if (data.success) {
         setHospitals(data.hospitals || []);
       }

@@ -12,8 +12,8 @@ import {
   View,
 } from 'react-native';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
+
 
 const styles = StyleSheet.create({
   keyboardContainer: {

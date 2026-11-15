@@ -3,18 +3,17 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
 
 type NotificationItem = {
   id: number;
@@ -22,25 +21,49 @@ type NotificationItem = {
   title: string;
   message: string;
   type: string;
-  is_read: boolean | number;
+  is_read: boolean | number | string;
   created_at: string;
 };
 
 export default function HospitalNotificationsScreen() {
-  const [notifications, setNotifications] = useState<
-    NotificationItem[]
-  >([]);
+  const [notifications, setNotifications] =
+    useState<NotificationItem[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
 
+  // SAFE JSON PARSER
+  const readResponse = async (response: Response) => {
+    const text = await response.text();
+
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  // READ STATUS NORMALIZATION
+  const isNotificationRead = (value: unknown) => {
+    return (
+      value === true ||
+      value === 1 ||
+      value === '1' ||
+      value === 'true'
+    );
+  };
+
+  // LOAD NOTIFICATIONS
   const loadNotifications = useCallback(async () => {
     try {
+      const loggedIn =
+        await AsyncStorage.getItem('hospitalLoggedIn');
+
       const storedHospital =
         await AsyncStorage.getItem('currentHospital');
 
-      if (!storedHospital) {
+      if (loggedIn !== 'true' || !storedHospital) {
         router.replace('/hospital-login');
         return;
       }
@@ -52,6 +75,7 @@ export default function HospitalNotificationsScreen() {
           'Error',
           'Hospital information is not available.'
         );
+        router.replace('/hospital-login');
         return;
       }
 
@@ -59,23 +83,23 @@ export default function HospitalNotificationsScreen() {
         `${API_URL}/hospital-notifications/${hospital.id}`
       );
 
-      const data = await response.json();
+      const data = await readResponse(response);
 
       if (!response.ok || !data.success) {
         Alert.alert(
           'Error',
-          data.message ||
-            'Unable to load notifications.'
+          data.message || 'Unable to load notifications.'
         );
         return;
       }
 
-      setNotifications(data.notifications || []);
-    } catch (error) {
-      console.log(
-        'HOSPITAL NOTIFICATIONS ERROR:',
-        error
+      setNotifications(
+        Array.isArray(data.notifications)
+          ? data.notifications
+          : []
       );
+    } catch (error) {
+      console.log('HOSPITAL NOTIFICATIONS ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -87,23 +111,24 @@ export default function HospitalNotificationsScreen() {
     }
   }, []);
 
+  // INITIAL LOAD
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
 
+  // REFRESH
   const handleRefresh = () => {
+    if (refreshing) return;
+
     setRefreshing(true);
     loadNotifications();
   };
 
+  // MARK SINGLE NOTIFICATION READ
   const markAsRead = async (
     notification: NotificationItem
   ) => {
-    const alreadyRead =
-      notification.is_read === true ||
-      notification.is_read === 1;
-
-    if (alreadyRead) {
+    if (isNotificationRead(notification.is_read)) {
       return;
     }
 
@@ -115,13 +140,12 @@ export default function HospitalNotificationsScreen() {
         }
       );
 
-      const data = await response.json();
+      const data = await readResponse(response);
 
       if (!response.ok || !data.success) {
         Alert.alert(
           'Error',
-          data.message ||
-            'Unable to update notification.'
+          data.message || 'Unable to update notification.'
         );
         return;
       }
@@ -134,10 +158,7 @@ export default function HospitalNotificationsScreen() {
         )
       );
     } catch (error) {
-      console.log(
-        'MARK NOTIFICATION ERROR:',
-        error
-      );
+      console.log('MARK NOTIFICATION ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -146,8 +167,9 @@ export default function HospitalNotificationsScreen() {
     }
   };
 
+  // MARK ALL NOTIFICATIONS READ
   const markAllAsRead = async () => {
-    if (notifications.length === 0) {
+    if (notifications.length === 0 || markingAll) {
       return;
     }
 
@@ -179,13 +201,12 @@ export default function HospitalNotificationsScreen() {
         }
       );
 
-      const data = await response.json();
+      const data = await readResponse(response);
 
       if (!response.ok || !data.success) {
         Alert.alert(
           'Error',
-          data.message ||
-            'Unable to update notifications.'
+          data.message || 'Unable to update notifications.'
         );
         return;
       }
@@ -197,10 +218,7 @@ export default function HospitalNotificationsScreen() {
         }))
       );
     } catch (error) {
-      console.log(
-        'MARK ALL NOTIFICATIONS ERROR:',
-        error
-      );
+      console.log('MARK ALL NOTIFICATIONS ERROR:', error);
 
       Alert.alert(
         'Connection Error',
@@ -211,33 +229,33 @@ export default function HospitalNotificationsScreen() {
     }
   };
 
+  // NOTIFICATION ICON
   const getNotificationIcon = (type: string) => {
     switch (type?.toLowerCase()) {
       case 'appointment':
         return '📅';
-
       case 'queue':
         return '🎫';
-
       case 'admin':
         return '🏥';
-
       case 'consultation':
         return '✅';
-
       default:
         return '🔔';
     }
   };
 
+  // TIME FORMAT
   const getTimeText = (createdAt: string) => {
+    if (!createdAt) return '';
+
     const date = new Date(createdAt);
 
     if (Number.isNaN(date.getTime())) {
       return '';
     }
 
-    return date.toLocaleString([], {
+    return date.toLocaleString('en-IN', {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
@@ -245,19 +263,16 @@ export default function HospitalNotificationsScreen() {
     });
   };
 
+  // UNREAD COUNT
   const unreadCount = notifications.filter(
-    (item) =>
-      item.is_read === false ||
-      item.is_read === 0
+    (item) => !isNotificationRead(item.is_read)
   ).length;
 
+  // LOADING
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator
-          size="large"
-          color="#2563EB"
-        />
+        <ActivityIndicator size="large" color="#2563EB" />
 
         <Text style={styles.loadingText}>
           Loading notifications...
@@ -266,9 +281,9 @@ export default function HospitalNotificationsScreen() {
     );
   }
 
+  // MAIN SCREEN
   return (
     <View style={styles.screen}>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -279,48 +294,33 @@ export default function HospitalNotificationsScreen() {
         }
         contentContainerStyle={styles.container}
       >
-
         {/* HEADER */}
-
         <View style={styles.header}>
-
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
           >
-            <Text style={styles.backText}>
-              ‹
-            </Text>
+            <Text style={styles.backText}>‹</Text>
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
-
-            <Text style={styles.headerTitle}>
-              Notifications
-            </Text>
+            <Text style={styles.headerTitle}>Notifications</Text>
 
             <Text style={styles.headerSubtitle}>
               Stay updated with your hospital
             </Text>
-
           </View>
 
           <View style={styles.headerSpace} />
-
         </View>
 
         {/* SUMMARY */}
-
         <View style={styles.summaryCard}>
-
           <View style={styles.notificationIcon}>
-            <Text style={styles.notificationIconText}>
-              🔔
-            </Text>
+            <Text style={styles.notificationIconText}>🔔</Text>
           </View>
 
           <View style={styles.summaryText}>
-
             <Text style={styles.summaryTitle}>
               Hospital Updates
             </Text>
@@ -332,7 +332,6 @@ export default function HospitalNotificationsScreen() {
                   }`
                 : 'You are all caught up'}
             </Text>
-
           </View>
 
           {unreadCount > 0 && (
@@ -342,13 +341,10 @@ export default function HospitalNotificationsScreen() {
               </Text>
             </View>
           )}
-
         </View>
 
         {/* SECTION HEADER */}
-
         <View style={styles.sectionHeader}>
-
           <View>
             <Text style={styles.sectionTitle}>
               Recent Notifications
@@ -365,24 +361,17 @@ export default function HospitalNotificationsScreen() {
               disabled={markingAll}
             >
               <Text style={styles.markAllText}>
-                {markingAll
-                  ? 'Updating...'
-                  : 'Mark all read'}
+                {markingAll ? 'Updating...' : 'Mark all read'}
               </Text>
             </TouchableOpacity>
           )}
-
         </View>
 
         {/* EMPTY STATE */}
-
         {notifications.length === 0 ? (
           <View style={styles.emptyCard}>
-
             <View style={styles.emptyIcon}>
-              <Text style={styles.emptyIconText}>
-                🔔
-              </Text>
+              <Text style={styles.emptyIconText}>🔔</Text>
             </View>
 
             <Text style={styles.emptyTitle}>
@@ -390,56 +379,43 @@ export default function HospitalNotificationsScreen() {
             </Text>
 
             <Text style={styles.emptyDescription}>
-              New hospital updates and activity
-              notifications will appear here.
+              New hospital updates and activity notifications
+              will appear here.
             </Text>
-
           </View>
         ) : (
           <View style={styles.notificationList}>
-
             {notifications.map((notification) => {
               const isUnread =
-                notification.is_read === false ||
-                notification.is_read === 0;
+                !isNotificationRead(notification.is_read);
 
               return (
                 <TouchableOpacity
                   key={notification.id}
                   activeOpacity={0.8}
-                  onPress={() =>
-                    markAsRead(notification)
-                  }
+                  onPress={() => markAsRead(notification)}
                   style={[
                     styles.notificationCard,
-                    isUnread &&
-                      styles.unreadNotificationCard,
+                    isUnread && styles.unreadNotificationCard,
                   ]}
                 >
-
                   <View
                     style={[
                       styles.typeIcon,
-                      isUnread &&
-                        styles.unreadTypeIcon,
+                      isUnread && styles.unreadTypeIcon,
                     ]}
                   >
                     <Text style={styles.typeIconText}>
-                      {getNotificationIcon(
-                        notification.type
-                      )}
+                      {getNotificationIcon(notification.type)}
                     </Text>
                   </View>
 
                   <View style={styles.notificationContent}>
-
                     <View style={styles.titleRow}>
-
                       <Text
                         style={[
                           styles.notificationTitle,
-                          isUnread &&
-                            styles.unreadTitle,
+                          isUnread && styles.unreadTitle,
                         ]}
                         numberOfLines={1}
                       >
@@ -449,42 +425,30 @@ export default function HospitalNotificationsScreen() {
                       {isUnread && (
                         <View style={styles.unreadDot} />
                       )}
-
                     </View>
 
-                    <Text
-                      style={styles.notificationMessage}
-                    >
+                    <Text style={styles.notificationMessage}>
                       {notification.message}
                     </Text>
 
                     <Text style={styles.notificationTime}>
-                      {getTimeText(
-                        notification.created_at
-                      )}
+                      {getTimeText(notification.created_at)}
                     </Text>
-
                   </View>
-
                 </TouchableOpacity>
               );
             })}
-
           </View>
         )}
 
         {/* FOOTER */}
-
         <Text style={styles.footer}>
           © QCare • Smart Hospital Queue Management
         </Text>
-
       </ScrollView>
-
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -511,7 +475,6 @@ const styles = StyleSheet.create({
   },
 
   /* HEADER */
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -560,7 +523,6 @@ const styles = StyleSheet.create({
   },
 
   /* SUMMARY */
-
   summaryCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -627,7 +589,6 @@ const styles = StyleSheet.create({
   },
 
   /* SECTION */
-
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -654,7 +615,6 @@ const styles = StyleSheet.create({
   },
 
   /* NOTIFICATIONS */
-
   notificationList: {
     gap: 12,
   },
@@ -735,7 +695,6 @@ const styles = StyleSheet.create({
   },
 
   /* EMPTY */
-
   emptyCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,

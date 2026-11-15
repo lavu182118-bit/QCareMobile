@@ -1,18 +1,18 @@
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-const API_URL = 'https:// 'https://qcare-backend-o8za.onrender.com';
-';
+const API_URL = 'https://qcare-backend-o8za.onrender.com';
+
 
 type HospitalDetails = {
   id: number;
